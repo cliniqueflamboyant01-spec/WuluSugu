@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Breaker - 3 Shots Strategy</title>
+    <style>
+        :root { 
+            --primary: #ff4757; --win: #2ecc71; --bg: #050505; 
+            --gold: #f1c40f; --diamond: #9b59b6; --glass: rgba(255, 255, 255, 0.1);
+        }
+        * { box-sizing: border-box; touch-action: none; user-select: none; }
+        body { background: var(--bg); color: white; margin: 0; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        #game-container { position: relative; width: 100%; max-width: 450px; height: 100%; max-height: 800px; background: #000; border: 2px solid #333; overflow: hidden; }
+        canvas { width: 100%; height: 100%; display: block; }
+        
+        /* HUD */
+        .hud { position: absolute; top: 0; left: 0; width: 100%; padding: 15px; display: flex; justify-content: space-between; z-index: 5; pointer-events: none; }
+        .hud-item { background: var(--glass); backdrop-filter: blur(5px); padding: 6px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); font-weight: bold; font-size: 12px; }
+        
+        /* BURST COUNTER */
+        #burst-ui { position: absolute; bottom: 100px; width: 100%; display: flex; justify-content: center; gap: 10px; pointer-events: none; }
+        .burst-dot { width: 20px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); transition: 0.3s; }
+        .burst-dot.active { background: var(--win); box-shadow: 0 0 10px var(--win); }
+
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.95); z-index: 10; text-align: center; padding: 20px; }
+        .overlay:not(.active) { display: none; }
+        .btn { border: none; padding: 15px 30px; font-size: 14px; font-weight: bold; border-radius: 15px; cursor: pointer; margin: 8px; width: 85%; max-width: 300px; text-transform: uppercase; }
+        .btn-play { background: var(--win); color: black; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="burst-ui">
+            <div id="dot-1" class="burst-dot"></div>
+            <div id="dot-2" class="burst-dot"></div>
+        </div>
+
+        <div class="hud">
+            <div class="hud-item" id="stage-hud">STAGE 1</div>
+            <div style="display: flex; gap: 8px;">
+                <div class="hud-item" style="color:var(--gold)">💰 <span id="game-gold">0</span></div>
+                <div class="hud-item" style="color:var(--diamond)">💎 <span id="game-dia">0</span></div>
+            </div>
+        </div>
+
+        <div id="start-menu" class="overlay active">
+            <h1 id="menu-title" style="color: var(--primary); font-size: 32px;">NEON DEFENSE</h1>
+            <p style="color:#888">1 Tir + 2 Rafales par tour</p>
+            <button class="btn btn-play" onclick="startGame()">Commencer</button>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        let stats = { gold: 0, diamonds: 0, stage: 1, wave: 1 };
+        let width, height, scale, gameActive = false, bricks = [], balls = [], isAiming = false;
+        let mousePos = {x:0, y:0}, isFiring = false, burstsLeft = 0;
+
+        function updateUI() {
+            document.getElementById("game-gold").innerText = stats.gold;
+            document.getElementById("game-dia").innerText = stats.diamonds;
+            document.getElementById("stage-hud").innerText = "STAGE " + stats.stage + " - " + stats.wave + "/10";
+            
+            // Mise à jour des points de rafale
+            document.getElementById("dot-1").className = "burst-dot" + (burstsLeft >= 1 ? " active" : "");
+            document.getElementById("dot-2").className = "burst-dot" + (burstsLeft >= 2 ? " active" : "");
+        }
+
+        function startGame() {
+            document.getElementById("start-menu").classList.remove("active");
+            gameActive = true;
+            resize();
+            spawnWave();
+        }
+
+        function resize() {
+            width = canvas.offsetWidth; height = canvas.offsetHeight;
+            canvas.width = width; canvas.height = height; scale = width / 400;
+        }
+
+        function spawnWave() {
+            const cols = 7, bW = (width - 40) / cols, bH = 25 * scale;
+            for(let i=0; i<cols; i++) {
+                if(Math.random() > 0.3) {
+                    bricks.push({ x: i * bW + 20, y: 60 * scale, w: bW - 6, h: bH - 6, hp: stats.stage * 100, shake: 0 });
+                }
+            }
+            updateUI();
+        }
+
+        function endTurn() {
+            isFiring = false;
+            burstsLeft = 0;
+            bricks.forEach(br => br.y += 40 * scale);
+            
+            if(bricks.some(br => br.hp > 0 && br.y > height - 120)) {
+                gameActive = false;
+                document.getElementById("menu-title").innerText = "GAME OVER";
+                document.getElementById("start-menu").classList.add("active");
+                return;
+            }
+
+            stats.wave++;
+            if(stats.wave > 10) { stats.stage++; stats.wave = 1; stats.diamonds++; }
+            spawnWave();
+        }
+
+        canvas.addEventListener("pointerdown", (e) => {
+            if(!gameActive) return;
+            updateMousePos(e);
+            
+            if(!isFiring) {
+                isAiming = true; // Préparation du Tir 1
+            } else if(burstsLeft > 0) {
+                fireBurst(); // Utilisation d'une rafale (1 ou 2)
+            }
+        });
+
+        canvas.addEventListener("pointermove", updateMousePos);
+        canvas.addEventListener("pointerup", () => { if(isAiming) { isAiming = false; fireMain(); } });
+
+        function updateMousePos(e) {
+            const r = canvas.getBoundingClientRect();
+            mousePos = { x: (e.touches?.[0].clientX || e.clientX) - r.left, y: (e.touches?.[0].clientY || e.clientY) - r.top };
+        }
+
+        function fireMain() {
+            isFiring = true;
+            burstsLeft = 2; // On donne les 2 rafales après le tir principal
+            updateUI();
+            const angle = Math.atan2(mousePos.y - (height - 50), mousePos.x - (width / 2));
+            for(let i=0; i<60; i++) {
+                setTimeout(() => { if(gameActive) balls.push({x: width/2, y: height-50, dx: Math.cos(angle)*10*scale, dy: Math.sin(angle)*10*scale, pwr: 5, col: '#00d2ff'}); }, i * 15);
+            }
+        }
+
+        function fireBurst() {
+            burstsLeft--;
+            updateUI();
+            const angle = Math.atan2(mousePos.y - (height - 50), mousePos.x - (width / 2));
+            for(let i=0; i<20; i++) { // Rafale rapide de 20 balles
+                const a = angle + (Math.random()-0.5)*0.2;
+                balls.push({x: width/2, y: height-50, dx: Math.cos(a)*13*scale, dy: Math.sin(a)*13*scale, pwr: 5, col: '#ff4757'});
+            }
+        }
+
+        function update() {
+            if(!gameActive) return;
+            for(let i=balls.length-1; i>=0; i--) {
+                let b = balls[i]; b.x += b.dx; b.y += b.dy;
+                if(b.x < 0 || b.x > width) b.dx *= -1;
+                if(b.y < 0) b.dy *= -1;
+                if(b.y > height) { balls.splice(i, 1); continue; }
+                
+                bricks.forEach(br => {
+                    if(br.hp > 0 && b.x > br.x && b.x < br.x+br.w && b.y > br.y && b.y < br.y+br.h) {
+                        br.hp -= b.pwr; b.dy *= -1; br.shake = 6;
+                        if(br.hp <= 0) stats.gold += 10;
+                    }
+                });
+            }
+            if(isFiring && balls.length === 0 && burstsLeft === 0) endTurn();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            if(!gameActive) { requestAnimationFrame(draw); return; }
+
+            // Ligne limite
+            ctx.strokeStyle = "rgba(255,0,0,0.2)";
+            ctx.beginPath(); ctx.moveTo(0, height-100); ctx.lineTo(width, height-100); ctx.stroke();
+
+            // Viseur (uniquement avant le premier tir)
+            if(isAiming) {
+                const base = { x: width/2, y: height-50 };
+                let simX = base.x, simY = base.y;
+                const angle = Math.atan2(mousePos.y - base.y, mousePos.x - base.x);
+                let vx = Math.cos(angle) * 20, vy = Math.sin(angle) * 20;
+                ctx.setLineDash([4, 12]); ctx.strokeStyle = "white";
+                ctx.beginPath(); ctx.moveTo(simX, simY);
+                for (let i = 0; i < 50; i++) {
+                    simX += vx; simY += vy;
+                    if (simX < 0 || simX > width) vx *= -1;
+                    if (simY < 0) break;
+                    ctx.lineTo(simX, simY);
+                }
+                ctx.stroke(); ctx.setLineDash([]);
+            }
+
+            bricks.forEach(br => {
+                if(br.hp <= 0) return;
+                ctx.fillStyle = "#222"; ctx.strokeStyle = "#444";
+                ctx.beginPath(); ctx.roundRect(br.x + (Math.random()-0.5)*br.shake, br.y, br.w, br.h, 4); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = "white"; ctx.font = "10px Arial"; ctx.textAlign="center";
+                ctx.fillText(Math.ceil(br.hp), br.x + br.w/2, br.y + br.h/2 + 4);
+                if(br.shake > 0) br.shake *= 0.8;
+            });
+
+            balls.forEach(b => {
+                ctx.fillStyle = b.col; ctx.beginPath(); ctx.arc(b.x, b.y, 4*scale, 0, Math.PI*2); ctx.fill();
+            });
+
+            // Canon
+            ctx.save();
+            ctx.translate(width/2, height-50);
+            ctx.rotate((isFiring||isAiming ? Math.atan2(mousePos.y-height+50, mousePos.x-width/2) : -Math.PI/2) + Math.PI/2);
+            ctx.fillStyle = "white"; ctx.fillRect(-10, -15, 20, 25);
+            ctx.restore();
+
+            update(); requestAnimationFrame(draw);
+        }
+
+        resize(); updateUI(); draw();
+    </script>
+</body>
+</html>

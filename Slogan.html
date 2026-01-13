@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expérience Liquide - Code & Digital</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick-theme.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
+
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background: #0a0a0a; color: #fff; font-family: sans-serif; }
+        
+        /* Layer Three.js (Arrière-plan) */
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Layer HTML (Premier plan) */
+        .content-overlay {
+            position: relative;
+            z-index: 10;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none; 
+        }
+
+        .text-slider-wrapper { width: 90%; max-width: 1000px; }
+        
+        .text-slide { outline: none; }
+        .text-slide h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(2rem, 8vw, 5rem);
+            line-height: 1.1;
+            text-align: center;
+            margin: 0;
+            pointer-events: auto;
+            letter-spacing: -1px;
+        }
+        .text-slide i { font-weight: 400; color: #d4a373; }
+
+        /* Navigation Custom */
+        .controls {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 50px;
+            z-index: 20;
+            pointer-events: auto;
+        }
+        .arrow {
+            font-size: 2.5rem;
+            cursor: pointer;
+            color: #fff;
+            opacity: 0.4;
+            transition: 0.3s ease;
+        }
+        .arrow:hover { opacity: 1; transform: scale(1.1); }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="content-overlay">
+        <div class="text-slider-wrapper">
+            <div class="text-slider">
+                <div class="text-slide"><h1>L'art du code <br> <i>à l'état pur</i>.</h1></div>
+                <div class="text-slide"><h1>L'innovation entre <br> <i>vos mains</i>.</h1></div>
+                <div class="text-slide"><h1>Une expérience fluide <br> <i>sans limites</i>.</h1></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="prev-btn"><ion-icon name="chevron-back-outline" class="arrow"></ion-icon></div>
+        <div class="next-btn"><ion-icon name="chevron-forward-outline" class="arrow"></ion-icon></div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.js"></script>
+    <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.180.0/build/three.module.js"
+      }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from "three";
+
+        // --- CONFIGURATION DU SLIDER ---
+        $(document).ready(function(){
+            $('.text-slider').slick({
+                fade: true,
+                autoplay: true,
+                autoplaySpeed: 4500,
+                speed: 1500,
+                arrows: false,
+                pauseOnHover: false,
+                cssEase: 'cubic-bezier(.84, 0, .08, .99)'
+            });
+            $('.prev-btn').click(() => $('.text-slider').slick('slickPrev'));
+            $('.next-btn').click(() => $('.text-slider').slick('slickNext'));
+        });
+
+        // --- THREE.JS LIQUID SHADER ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        const uniforms = {
+            uTime: { value: 0 },
+            uPointer: { value: new THREE.Vector2(0, 0) },
+            uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+        };
+
+        window.addEventListener('pointermove', (e) => {
+            uniforms.uPointer.value.x = (e.clientX / window.innerWidth);
+            uniforms.uPointer.value.y = 1.0 - (e.clientY / window.innerHeight);
+        });
+
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uPointer;
+                uniform vec2 uResolution;
+                varying vec2 vUv;
+
+                void main() {
+                    vec2 uv = vUv;
+                    float aspect = uResolution.x / uResolution.y;
+                    uv.x *= aspect;
+                    vec2 mouse = uPointer;
+                    mouse.x *= aspect;
+
+                    float dist = distance(uv, mouse);
+                    float strength = 0.15 / (dist + 0.1);
+                    strength = pow(strength, 2.0);
+
+                    vec3 color1 = vec3(0.05, 0.05, 0.07); // Fond presque noir
+                    vec3 color2 = vec3(0.3, 0.6, 1.0);    // Teinte Bleue Tech / Cyan
+                    
+                    // On garde un peu du doré original (color2) ou on passe sur du bleu ? 
+                    // Ici mixé avec un bleu "électrique"
+                    vec3 techGold = vec3(0.83, 0.64, 0.45);
+                    vec3 finalColor = mix(color1, techGold, strength * 0.35);
+                    
+                    finalColor += sin(uv.y * 12.0 + uTime) * 0.015;
+
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        function animate(t) {
+            requestAnimationFrame(animate);
+            uniforms.uTime.value = t * 0.001;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+        });
+
+        animate(0);
+    </script>
+</body>
+</html>

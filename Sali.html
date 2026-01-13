@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Brick Breaker - Premium Design</title>
+    <style>
+        :root { 
+            --primary: #ff4757; --win: #2ecc71; --bg: #050505; 
+            --gold: #f1c40f; --diamond: #9b59b6; --glass: rgba(255, 255, 255, 0.1);
+        }
+        * { box-sizing: border-box; touch-action: none; user-select: none; }
+        body { background: var(--bg); color: white; margin: 0; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        #game-container { position: relative; width: 100%; max-width: 450px; height: 100%; max-height: 800px; background: radial-gradient(circle at center, #111 0%, #000 100%); border: 2px solid #333; overflow: hidden; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+        canvas { width: 100%; height: 100%; display: block; }
+        
+        /* HUD DESIGN */
+        .hud { position: absolute; top: 0; left: 0; width: 100%; padding: 15px; display: flex; justify-content: space-between; z-index: 5; pointer-events: none; }
+        .hud-item { background: var(--glass); backdrop-filter: blur(5px); padding: 6px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        
+        /* MENUS */
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.95); z-index: 10; text-align: center; padding: 20px; overflow-y: auto; }
+        .overlay:not(.active) { display: none; }
+        .btn { border: none; padding: 15px 30px; font-size: 14px; font-weight: bold; border-radius: 15px; cursor: pointer; margin: 8px; width: 85%; max-width: 300px; text-transform: uppercase; transition: all 0.2s; box-shadow: 0 4px 0 rgba(0,0,0,0.2); }
+        .btn:active { transform: translateY(2px); box-shadow: none; }
+        .btn-play { background: linear-gradient(135deg, #2ecc71, #27ae60); color: white; }
+        .btn-shop { background: linear-gradient(135deg, #9b59b6, #8e44ad); color: white; }
+        
+        .cannon-item { background: #111; border: 1px solid #333; border-radius: 15px; padding: 15px; margin-bottom: 10px; width: 100%; text-align: left; transition: 0.3s; }
+        .cannon-item.equipped { border: 2px solid var(--primary); box-shadow: 0 0 15px rgba(255, 71, 87, 0.3); }
+        
+        #burst-indicator { position: absolute; bottom: 100px; width: 100%; text-align: center; color: var(--win); font-weight: bold; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 0 10px var(--win); pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div class="hud">
+            <div class="hud-item" style="color:white">LVL <span id="game-lvl">1</span></div>
+            <div style="display: flex; gap: 8px;">
+                <div class="hud-item" style="color:var(--gold)">💰 <span id="game-gold">0</span></div>
+                <div class="hud-item" style="color:var(--diamond)">💎 <span id="game-dia">0</span></div>
+            </div>
+        </div>
+
+        <div id="burst-indicator"></div>
+
+        <div id="start-menu" class="overlay active">
+            <h1 style="color: var(--primary); font-size: 40px; margin: 60px 0 10px;">NEON<br>BREAKER</h1>
+            <p style="color: #666; margin-bottom: 40px;">ÉDITION ULTIME</p>
+            <button class="btn btn-play" onclick="startGame(true)">Continuer la conquête</button>
+            <button class="btn btn-shop" onclick="openShop()">Arsenal & Skins 🛠️</button>
+            <button class="btn" style="background:#222; color:#888" onclick="startGame(false)">Reset</button>
+        </div>
+
+        <div id="shop-menu" class="overlay">
+            <h2 style="margin-top:20px">ARSENAL DES CANONS</h2>
+            <button class="btn" style="background:var(--gold); color:black; font-size:11px" onclick="buyDiamond()">🛒 Marché Noir : 500 💰 ➜ 1 💎</button>
+            <div id="cannon-list" style="width:100%; max-width:350px; margin-top:15px"></div>
+            <button class="btn" style="background:#333; color:white" onclick="closeShop()">Fermer</button>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const CANNONS = [
+            { id: 'classic', name: 'Standard Unit', cost: 0, type: 'gold', pwr: 1, color: '#00d2ff', balls: 60, bursts: 2 },
+            { id: 'gold', name: 'Midas Touch', cost: 1500, type: 'gold', pwr: 3, color: '#f1c40f', balls: 80, bursts: 3 },
+            { id: 'plasma', name: 'Nova Core', cost: 10, type: 'diamond', pwr: 8, color: '#9b59b6', balls: 110, bursts: 4 },
+            { id: 'reaper', name: 'Hellfire', cost: 30, type: 'diamond', pwr: 30, color: '#ff4757', balls: 150, bursts: 6 }
+        ];
+
+        let stats = JSON.parse(localStorage.getItem('bb_vPremium')) || {
+            gold: 0, diamonds: 0, currentLvl: 1, owned: ['classic'], equipped: 'classic'
+        };
+
+        let width, height, scale, gameActive = false, bricks = [], balls = [], isAiming = false, mousePos = {x:0, y:0}, recoil = 0;
+        let burstsAvailable = 0;
+
+        function save() { localStorage.setItem('bb_vPremium', JSON.stringify(stats)); updateUI(); }
+
+        function updateUI() {
+            document.getElementById("game-gold").innerText = stats.gold.toLocaleString();
+            document.getElementById("game-dia").innerText = stats.diamonds;
+            document.getElementById("game-lvl").innerText = stats.currentLvl;
+            renderArsenal();
+        }
+
+        function renderArsenal() {
+            const list = document.getElementById("cannon-list");
+            list.innerHTML = "";
+            CANNONS.forEach(c => {
+                const owned = stats.owned.includes(c.id);
+                const active = stats.equipped === c.id;
+                list.innerHTML += `
+                    <div class="cannon-item ${active?'equipped':''}">
+                        <div style="display:flex; justify-content:space-between; align-items:center">
+                            <div><b style="color:${c.color}">${c.name}</b><br><small style="color:#666">Pwr: ${c.pwr} | Rafales: ${c.bursts}</small></div>
+                            ${owned ? (active ? '<span style="color:var(--win)">ÉQUIPÉ</span>' : `<button class="btn" style="width:auto; padding:8px 15px; margin:0; font-size:10px" onclick="equip('${c.id}')">Choisir</button>`) : 
+                            `<button class="btn" style="width:auto; padding:8px 15px; margin:0; font-size:10px; background:#444" onclick="buyCannon('${c.id}')">${c.cost} ${c.type==='gold'?'💰':'💎'}</button>`}
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function buyDiamond() { if(stats.gold >= 500) { stats.gold -= 500; stats.diamonds++; save(); } }
+        function buyCannon(id) {
+            const c = CANNONS.find(x => x.id === id);
+            if(c.type==='gold' && stats.gold >= c.cost) { stats.gold -= c.cost; stats.owned.push(id); }
+            else if(c.type==='diamond' && stats.diamonds >= c.cost) { stats.diamonds -= c.cost; stats.owned.push(id); }
+            save();
+        }
+        function equip(id) { stats.equipped = id; save(); }
+        function openShop() { document.getElementById("shop-menu").classList.add("active"); }
+        function closeShop() { document.getElementById("shop-menu").classList.remove("active"); }
+
+        function startGame(cont) {
+            if(!cont) { stats.currentLvl = 1; stats.gold = 0; stats.diamonds = 0; stats.owned = ['classic']; stats.equipped = 'classic'; save(); }
+            document.getElementById("start-menu").classList.remove("active");
+            gameActive = true; resize();
+        }
+
+        function resize() {
+            width = canvas.offsetWidth; height = canvas.offsetHeight;
+            canvas.width = width; canvas.height = height; scale = width / 400;
+            if(gameActive) loadLevel();
+        }
+
+        function loadLevel() {
+            bricks = []; balls = []; burstsAvailable = 0;
+            const cols = 7, rows = 8, bW = (width - 40) / cols, bH = 26 * scale;
+            for(let i=0; i<28; i++) {
+                if(Math.random() > 0.4) {
+                    bricks.push({
+                        x: (i % cols) * bW + 20, y: Math.floor(i / cols) * bH + 100 * scale,
+                        w: bW - 6, h: bH - 6, hp: 100 + (stats.currentLvl * 200),
+                        maxHp: 100 + (stats.currentLvl * 200),
+                        type: Math.random() > 0.9 ? 'gold' : 'bomb',
+                        shake: 0
+                    });
+                }
+            }
+            updateUI();
+        }
+
+        canvas.addEventListener("pointerdown", (e) => { 
+            if(!gameActive) return;
+            updateMouse(e);
+            if(balls.length === 0) isAiming = true;
+            else if(burstsAvailable > 0) fireBurst();
+        });
+        canvas.addEventListener("pointermove", updateMouse);
+        canvas.addEventListener("pointerup", () => { if(isAiming) { isAiming = false; fireMain(); } });
+
+        function updateMouse(e) {
+            const r = canvas.getBoundingClientRect();
+            mousePos = { x: (e.touches?.[0].clientX || e.clientX) - r.left, y: (e.touches?.[0].clientY || e.clientY) - r.top };
+        }
+
+        function fireMain() {
+            const c = CANNONS.find(x => x.id === stats.equipped);
+            burstsAvailable = c.bursts; recoil = 15;
+            const angle = Math.atan2(mousePos.y - (height - 50), mousePos.x - (width / 2));
+            for(let i=0; i<c.balls; i++) {
+                setTimeout(() => {
+                    balls.push({x: width/2, y: height-50, dx: Math.cos(angle)*10*scale, dy: Math.sin(angle)*10*scale, pwr: c.pwr, col: c.color});
+                }, i * 10);
+            }
+        }
+
+        function fireBurst() {
+            burstsAvailable--; recoil = 12;
+            const c = CANNONS.find(x => x.id === stats.equipped);
+            const angle = Math.atan2(mousePos.y - (height - 50), mousePos.x - (width / 2));
+            for(let i=0; i<20; i++) {
+                const a = angle + (Math.random() - 0.5) * 0.4;
+                balls.push({x: width/2, y: height-50, dx: Math.cos(a)*13*scale, dy: Math.sin(a)*13*scale, pwr: c.pwr, col: c.color});
+            }
+        }
+
+        function drawBrick(br) {
+            const color = br.type === 'gold' ? '#f1c40f' : '#ff4757';
+            const x = br.x + (Math.random() - 0.5) * br.shake;
+            const y = br.y + (Math.random() - 0.5) * br.shake;
+            
+            // Ombre portée
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = color;
+            
+            // Corps de la brique (Dégradé 3D)
+            const grad = ctx.createLinearGradient(x, y, x, y + br.h);
+            grad.addColorStop(0, color);
+            grad.addColorStop(1, '#600');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.roundRect(x, y, br.w, br.h, 4);
+            ctx.fill();
+            
+            // Effet brillant sur le dessus
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.fillRect(x + 2, y + 2, br.w - 4, 2);
+            
+            // Texte des points de vie
+            ctx.fillStyle = "white";
+            ctx.font = `bold ${10 * scale}px Arial`;
+            ctx.textAlign = "center";
+            ctx.fillText(Math.ceil(br.hp), x + br.w/2, y + br.h/2 + 4);
+            
+            if(br.shake > 0) br.shake *= 0.8;
+        }
+
+        function update() {
+            if(!gameActive) return;
+            recoil *= 0.8;
+            
+            const indicator = document.getElementById("burst-indicator");
+            indicator.innerText = (balls.length > 0 && burstsAvailable > 0) ? `RAFALES : ${burstsAvailable}` : "";
+
+            for(let i=balls.length-1; i>=0; i--) {
+                let b = balls[i]; b.x += b.dx; b.y += b.dy;
+                if(b.x < 0 || b.x > width) b.dx *= -1;
+                if(b.y < 0) b.dy *= -1;
+                if(b.y > height) { balls.splice(i, 1); continue; }
+                
+                bricks.forEach(br => {
+                    if(br.hp > 0 && b.x > br.x && b.x < br.x+br.w && b.y > br.y && b.y < br.y+br.h) {
+                        br.hp -= b.pwr; b.dy *= -1; br.shake = 8;
+                        if(br.hp <= 0 && br.type === 'gold') { stats.gold += 25; save(); }
+                    }
+                });
+            }
+            if(bricks.length > 0 && bricks.every(br => br.hp <= 0)) { stats.currentLvl++; save(); loadLevel(); }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            if(!gameActive) { requestAnimationFrame(draw); return; }
+            
+            const c = CANNONS.find(x => x.id === stats.equipped);
+
+            // Viseur Laser
+            if(isAiming) {
+                const base = { x: width/2, y: height-50 };
+                let simX = base.x, simY = base.y;
+                const angle = Math.atan2(mousePos.y - base.y, mousePos.x - base.x);
+                let vx = Math.cos(angle) * 20, vy = Math.sin(angle) * 20;
+                ctx.setLineDash([2, 8]); ctx.strokeStyle = c.color;
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(simX, simY);
+                for (let i = 0; i < 40; i++) {
+                    simX += vx; simY += vy;
+                    if (simX < 0 || simX > width) vx *= -1;
+                    if (simY < 0) break;
+                    ctx.lineTo(simX, simY);
+                }
+                ctx.stroke();
+                ctx.lineWidth = 1; ctx.setLineDash([]);
+            }
+
+            bricks.forEach(br => { if(br.hp > 0) drawBrick(br); });
+
+            balls.forEach(b => {
+                ctx.shadowBlur = 8; ctx.shadowColor = b.col;
+                ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(b.x, b.y, 4*scale, 0, Math.PI*2); ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Canon Stylisé
+            ctx.save();
+            ctx.translate(width/2, height-50);
+            const cannonAngle = isAiming || balls.length > 0 ? Math.atan2(mousePos.y - (height-50), mousePos.x - (width/2)) : -Math.PI/2;
+            ctx.rotate(cannonAngle + Math.PI/2);
+            ctx.fillStyle = "#333"; ctx.roundRect(-18, recoil, 36, 45, 8); ctx.fill();
+            ctx.fillStyle = c.color; ctx.fillRect(-12, -25 + recoil, 24, 35);
+            ctx.restore();
+
+            update(); requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('resize', resize);
+        updateUI(); draw();
+    </script>
+</body>
+</html>

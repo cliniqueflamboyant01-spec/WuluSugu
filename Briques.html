@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Brick Breaker - Click to Play</title>
+    <style>
+        body { margin: 0; background: #1a1a1a; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        #nav-bar { width: 360px; display: flex; justify-content: flex-start; padding: 10px 0; }
+        .btn-menu { background: #555; color: white; text-decoration: none; padding: 8px 15px; border-radius: 5px; font-size: 0.9em; font-weight: bold; border: 1px solid #777; }
+        #ui { width: 360px; display: flex; justify-content: space-between; padding: 15px; background: #333; border-radius: 8px 8px 0 0; font-weight: bold; box-sizing: border-box; }
+        canvas { background: #222; border: 3px solid #444; border-radius: 0 0 8px 8px; touch-action: none; }
+        .stat { color: #ffcc00; font-size: 1.2em; }
+        #overlay { position: absolute; display: none; flex-direction: column; align-items: center; justify-content: center; width: 360px; height: 500px; background: rgba(0,0,0,0.8); border-radius: 0 0 8px 8px; top: 0; }
+        .btn-action { padding: 15px 30px; font-size: 1.2em; cursor: pointer; background: #4db8ff; border: none; border-radius: 5px; color: white; font-weight: bold; margin-top: 20px; }
+        #hint { position: absolute; width: 100%; text-align: center; bottom: 100px; font-weight: bold; color: #4db8ff; pointer-events: none; text-shadow: 2px 2px 4px #000; }
+    </style>
+</head>
+<body>
+
+    <div id="nav-bar">
+        <a href="index.html" class="btn-menu">🏠 MENU</a>
+    </div>
+
+    <div id="ui">
+        <div>NIVEAU: <span id="levelDisp" class="stat">1</span></div>
+        <div>BALLES: <span id="ballCount" class="stat">3</span></div>
+    </div>
+    
+    <div style="position: relative;">
+        <canvas id="game"></canvas>
+        <div id="hint">CLIQUEZ POUR LANCER</div>
+        <div id="overlay">
+            <h1 id="msg">GAME OVER</h1>
+            <button class="btn-action" onclick="resumeGame()">RECOMMENCER</button>
+            <a href="index.html" style="margin-top: 15px; color: #aaa;">Quitter</a>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const hint = document.getElementById('hint');
+        
+        canvas.width = 360; canvas.height = 500;
+
+        let currentLevel = 1;
+        let lives = 3;
+        let ballSpeed = 4;
+        let paddleX = (canvas.width - 80) / 2;
+        let bricks = [];
+        let isPlaying = true;
+        let isWaitingToStart = true; // Nouvel état pour attendre l'utilisateur
+
+        const LEVELS = [
+            [[0,1,1,1,1,1,0],[0,1,0,0,0,0,0],[0,1,1,1,1,0,0],[0,1,0,0,0,0,0],[0,1,1,1,1,1,0]],
+            [[0,0,0,1,0,0,0],[0,0,1,1,1,0,0],[0,1,1,1,1,1,0],[1,1,1,1,1,1,1]],
+            [[1,0,1,0,1,0,1],[1,1,1,1,1,1,1],[0,1,0,1,0,1,0],[1,1,1,1,1,1,1]]
+        ];
+
+        function initLevel() {
+            bricks = [];
+            const layout = LEVELS[(currentLevel - 1) % LEVELS.length];
+            const bw = canvas.width / layout[0].length;
+            const bh = 25;
+            for(let r=0; r<layout.length; r++) {
+                for(let c=0; c<layout[r].length; c++) {
+                    if(layout[r][c] === 1) bricks.push({x: c*bw, y: r*bh+60, w: bw, h: bh, active: true});
+                }
+            }
+            document.getElementById('levelDisp').innerText = currentLevel;
+            document.getElementById('ballCount').innerText = lives;
+            ballSpeed = 4 + (currentLevel * 0.5);
+            isWaitingToStart = true;
+        }
+
+        class Ball {
+            constructor() { this.reset(); }
+            reset() {
+                this.dead = false;
+                isWaitingToStart = true;
+                hint.style.display = 'block';
+            }
+            update() {
+                if (isWaitingToStart) {
+                    // La balle suit le patin
+                    this.x = paddleX + 40;
+                    this.y = canvas.height - 32;
+                    return;
+                }
+
+                this.x += this.dx; this.y += this.dy;
+                if(this.x < 0 || this.x > canvas.width) this.dx *= -1;
+                if(this.y < 0) this.dy *= -1;
+                
+                // Collision Patin
+                if(this.y > canvas.height - 25 && this.x > paddleX && this.x < paddleX + 80) {
+                    this.dy = -ballSpeed;
+                    // Ajuster l'angle selon l'impact
+                    let hitPos = (this.x - (paddleX + 40)) / 40;
+                    this.dx = hitPos * ballSpeed;
+                }
+
+                if(this.y > canvas.height) this.dead = true;
+
+                bricks.forEach(b => {
+                    if(b.active && this.x > b.x && this.x < b.x+b.w && this.y > b.y && this.y < b.y+b.h) {
+                        this.dy *= -1; b.active = false;
+                        if(bricks.every(br => !br.active)) nextLevel();
+                    }
+                });
+            }
+            draw() {
+                ctx.beginPath(); ctx.arc(this.x, this.y, 6, 0, Math.PI*2);
+                ctx.fillStyle = "white"; ctx.fill();
+            }
+            launch() {
+                if (isWaitingToStart) {
+                    this.dx = ballSpeed * (Math.random() > 0.5 ? 1 : -1);
+                    this.dy = -ballSpeed;
+                    isWaitingToStart = false;
+                    hint.style.display = 'none';
+                }
+            }
+        }
+
+        let ball = new Ball();
+
+        function nextLevel() {
+            currentLevel++;
+            initLevel();
+            ball.reset();
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            overlay.style.display = 'flex';
+            hint.style.display = 'none';
+        }
+
+        function resumeGame() {
+            lives = 3;
+            isPlaying = true;
+            overlay.style.display = 'none';
+            initLevel();
+            ball.reset();
+            requestAnimationFrame(draw);
+        }
+
+        // --- INPUTS ---
+        document.addEventListener("mousemove", e => {
+            let rect = canvas.getBoundingClientRect();
+            paddleX = e.clientX - rect.left - 40;
+            if(paddleX < 0) paddleX = 0;
+            if(paddleX > canvas.width - 80) paddleX = canvas.width - 80;
+        });
+
+        canvas.addEventListener("mousedown", () => ball.launch());
+        canvas.addEventListener("touchstart", (e) => {
+            if (isWaitingToStart) ball.launch();
+            e.preventDefault();
+        }, {passive: false});
+
+        canvas.addEventListener("touchmove", e => {
+            let rect = canvas.getBoundingClientRect();
+            paddleX = e.touches[0].clientX - rect.left - 40;
+            e.preventDefault();
+        }, {passive: false});
+
+        function draw() {
+            if(!isPlaying) return;
+            ctx.clearRect(0,0,canvas.width, canvas.height);
+            
+            bricks.forEach(b => {
+                if(b.active) {
+                    ctx.fillStyle = `hsl(${currentLevel * 50}, 70%, 50%)`;
+                    ctx.fillRect(b.x+1, b.y+1, b.w-2, b.h-2);
+                }
+            });
+
+            ctx.fillStyle = "#4db8ff";
+            ctx.fillRect(paddleX, canvas.height - 20, 80, 12);
+
+            ball.update();
+            ball.draw();
+
+            if(ball.dead) {
+                lives--;
+                document.getElementById('ballCount').innerText = lives;
+                if(lives <= 0) gameOver();
+                else ball.reset();
+            }
+            requestAnimationFrame(draw);
+        }
+
+        initLevel();
+        draw();
+    </script>
+</body>
+</html>

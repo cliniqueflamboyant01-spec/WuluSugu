@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Dames Master : TOGOLA DESIGN</title>
+    
+    <link rel="manifest" href="data:application/manifest+json,{%22name%22:%22Dames%20Master%20TOGOLA%22,%22short_name%22:%22Dames%20Togola%22,%22start_url%22:%22index.html%22,%22display%22:%22standalone%22,%22background_color%22:%22#0f0f0f%22,%22theme_color%22:%22#0f0f0f%22}">
+
+    <style>
+        :root { --bg: #0f0f0f; --board-border: #2c1b0e; --cell-white: #e0d8d0; --cell-black: #3a2a1d; }
+        * { box-sizing: border-box; touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { margin: 0; background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+        
+        .header { width: 100%; padding: 15px 10px; text-align: center; background: #1a1a1a; border-bottom: 1px solid #333; }
+        #status { font-weight: bold; letter-spacing: 1px; color: #f1c40f; }
+        
+        .info-bar { display: flex; justify-content: space-around; width: 100%; max-width: 500px; padding: 10px; font-size: 0.8rem; background: #111; }
+        #timer { color: #2ecc71; font-family: monospace; font-size: 1.1rem; }
+        
+        #thinking-bar { height: 3px; width: 0%; background: #2ecc71; transition: width 0.4s ease; }
+        
+        .board-container { margin: 10px auto; padding: 5px; background: var(--board-border); border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.9); position: relative; }
+        #board { display: grid; grid-template-columns: repeat(10, 1fr); width: 92vw; height: 92vw; max-width: 480px; max-height: 480px; border: 2px solid #000; z-index: 1; }
+        
+        .cell { position: relative; display: flex; justify-content: center; align-items: center; }
+        .white { background: var(--cell-white); }
+        .black { background: var(--cell-black); }
+
+        .pion { width: 85%; height: 85%; border-radius: 50%; position: relative; z-index: 2; transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 0 rgba(0,0,0,0.6), inset 0 -2px 4px rgba(0,0,0,0.3); pointer-events: none; }
+        .p1 { background: radial-gradient(circle at 30% 30%, #ffffff, #bdc3c7); border: 1px solid #95a5a6; }
+        .p2 { background: radial-gradient(circle at 30% 30%, #ff4d4d, #c0392b); border: 1px solid #900; }
+        .dame::after { content: "★"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #f1c40f; font-size: 1.4rem; text-shadow: 0 1px 2px black; }
+
+        .selected { transform: scale(1.2); outline: 3px solid #f1c40f; z-index: 10; box-shadow: 0 0 20px #f1c40f; }
+        .hint { position: absolute; width: 30%; height: 30%; background: rgba(46, 204, 113, 0.6); border-radius: 50%; z-index: 1; border: 1px solid #2ecc71; }
+        
+        .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; padding: 15px; width: 100%; max-width: 500px; }
+        button { flex: 1; min-width: 100px; padding: 12px; border: none; border-radius: 6px; font-weight: bold; color: white; background: #34495e; font-size: 0.75rem; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
+        button:active { transform: scale(0.95); background: #2c3e50; }
+        button:disabled { opacity: 0.4; pointer-events: none; }
+
+        #celebration-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div id="status">JOUEUR 1 (BLANC)</div>
+</div>
+<div id="thinking-bar"></div>
+
+<div class="info-bar">
+    <span>TEMPS: <span id="timer">00:00</span></span>
+    <span id="mode-label">MODE: IA</span>
+</div>
+
+<div class="board-container">
+    <canvas id="celebration-layer"></canvas>
+    <div id="board"></div>
+</div>
+
+<div class="controls">
+    <button onpointerdown="location.reload()">Reset</button>
+    <button id="modeBtn" onpointerdown="toggleMode()">IA Active</button>
+    <button id="lvlBtn" onpointerdown="cycleLevel()" style="background: #27ae60;">Niveau: Débutant</button>
+</div>
+
+<script>
+    // --- MOTEUR AUDIO ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSfx(freq, type='sine', dur=0.1) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + dur);
+    }
+
+    // --- VARIABLES GLOBALES ---
+    let grid = [], turn = 1, selected = null, isAIMode = true, aiLevel = 1, gameStarted = false, isGameOver = false;
+    let seconds = 0, timerInterval;
+    const boardDiv = document.getElementById('board'), statusDiv = document.getElementById('status'), lvlBtn = document.getElementById('lvlBtn');
+    const canvas = document.getElementById('celebration-layer'), ctx = canvas.getContext('2d');
+
+    // --- INITIALISATION ---
+    function init() {
+        grid = Array(10).fill().map(() => Array(10).fill(0));
+        for(let l=0; l<10; l++) {
+            for(let c=0; c<10; c++) {
+                if((l+c)%2 !== 0) {
+                    if(l < 4) grid[l][c] = 2; else if(l > 5) grid[l][c] = 1;
+                }
+            }
+        }
+        render();
+    }
+
+    function render() {
+        boardDiv.innerHTML = '';
+        const caps = getCaptures(grid, turn);
+        const hints = selected ? getMovesForPiece(grid, selected, caps) : [];
+        for(let l=0; l<10; l++) {
+            for(let c=0; c<10; c++) {
+                const cell = document.createElement('div');
+                cell.className = `cell ${(l+c)%2===0?'white':'black'}`;
+                if(grid[l][c]!==0) {
+                    const p = document.createElement('div');
+                    p.className=`pion p${grid[l][c]%2===0?2:1} ${grid[l][c]>2?'dame':''} ${selected?.l===l&&selected?.c===c?'selected':''}`;
+                    cell.appendChild(p);
+                }
+                if(hints.some(h=>h.tl===l&&h.tc===c)) {
+                    const hDiv = document.createElement('div'); hDiv.className='hint'; cell.appendChild(hDiv);
+                }
+                cell.onpointerdown = (e) => { e.preventDefault(); handleClick(l, c); };
+                boardDiv.appendChild(cell);
+            }
+        }
+    }
+
+    function handleClick(l, c) {
+        if(isGameOver || (isAIMode && turn === 2)) return;
+        const caps = getCaptures(grid, turn);
+        if(grid[l][c] % 2 === turn % 2 && grid[l][c] !== 0) {
+            selected = {l, c};
+        } else if(selected && grid[l][c] === 0) {
+            const moves = getMovesForPiece(grid, selected, caps);
+            const move = moves.find(m => m.tl === l && m.tc === c);
+            if(move) {
+                if(!gameStarted) { gameStarted = true; lvlBtn.disabled = true; startTimer(); }
+                playSfx(move.isCap ? 400 : 200, move.isCap ? 'square' : 'sine');
+                applyMove(grid, move);
+                const nextCaps = getCapturesForPiece(grid, {l:move.tl, c:move.tc});
+                if(move.isCap && nextCaps.length > 0) { selected = {l:move.tl, c:move.tc}; render(); return; }
+                nextTurn();
+            }
+        }
+        render();
+    }
+
+    // --- LOGIQUE CHRONO ---
+    function startTimer() {
+        if (timerInterval) return;
+        timerInterval = setInterval(() => {
+            seconds++;
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            document.getElementById('timer').innerText = `${m}:${s}`;
+        }, 1000);
+    }
+
+    // --- CELEBRATION BUBBLES ---
+    let bubbles = [];
+    class Bubble {
+        constructor() { this.reset(); }
+        reset() {
+            this.x = Math.random() * canvas.width;
+            this.y = canvas.height + 50;
+            this.speed = Math.random() * 2 + 1;
+            this.radius = Math.random() * 15 + 10;
+            this.exploded = false; this.timer = 0;
+            this.color = `hsl(${Math.random() * 360}, 80%, 60%)`;
+        }
+        update() {
+            if(!this.exploded) {
+                this.y -= this.speed;
+                if(this.y < canvas.height * 0.4 && Math.random() < 0.02) this.exploded = true;
+                if(this.y < -50) this.reset();
+            } else { this.timer++; if(this.timer > 80) this.reset(); }
+        }
+        draw() {
+            if(!this.exploded) {
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+                ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.stroke();
+            } else {
+                ctx.font = "bold 12px sans-serif"; ctx.fillStyle = this.color; ctx.textAlign = "center";
+                ctx.fillText("TOGOLA DESIGN", this.x, this.y);
+            }
+        }
+    }
+
+    function startCelebration() {
+        isGameOver = true; clearInterval(timerInterval);
+        canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight;
+        for(let i=0; i<20; i++) bubbles.push(new Bubble());
+        playSfx(500, 'sine', 0.5);
+        function loop() { if(!isGameOver) return; ctx.clearRect(0,0,canvas.width,canvas.height); bubbles.forEach(b=>{b.update();b.draw();}); requestAnimationFrame(loop); }
+        loop();
+    }
+
+    // --- IA ET MOTEUR ---
+    function nextTurn() {
+        selected = null; turn = turn === 1 ? 2 : 1;
+        statusDiv.innerText = turn === 1 ? "JOUEUR 1 (BLANC)" : (isAIMode ? "IA RÉFLÉCHIT..." : "JOUEUR 2 (ROUGE)");
+        const b = grid.flat().some(v => v===1 || v===3); const r = grid.flat().some(v => v===2 || v===4);
+        if(!b || !r) { startCelebration(); statusDiv.innerText = !b ? "JOUEUR 2 / IA GAGNE !" : "JOUEUR 1 GAGNE !"; return; }
+        if(isAIMode && turn === 2) { document.getElementById('thinking-bar').style.width="100%"; setTimeout(aiMove, 600); }
+        else { document.getElementById('thinking-bar').style.width="0%"; }
+    }
+
+    function aiMove() {
+        let depth = aiLevel === 1 ? 2 : (aiLevel === 2 ? 4 : 6);
+        let res = minimax(grid, depth, -Infinity, Infinity, true);
+        if(res.move) {
+            playSfx(res.move.isCap ? 400 : 200, 'sine');
+            applyMove(grid, res.move);
+            if(res.move.isCap && getCapturesForPiece(grid, {l:res.move.tl,c:res.move.tc}).length>0) { setTimeout(aiMove, 500); render(); return; }
+        }
+        nextTurn(); render();
+    }
+
+    function minimax(g, depth, alpha, beta, isIA) {
+        const caps = getCaptures(g, isIA?2:1), moves = caps.length>0?caps:getAllMoves(g, isIA?2:1);
+        if(depth === 0 || moves.length === 0) return { score: evaluate(g) };
+        let bestScore = isIA ? -Infinity : Infinity, chosenMove = null;
+        for(const m of moves) {
+            let copy = g.map(r => [...r]); applyMove(copy, m);
+            let score = minimax(copy, depth-1, alpha, beta, !isIA).score;
+            if(isIA) { if(score > bestScore) { bestScore = score; chosenMove = m; } alpha = Math.max(alpha, bestScore); }
+            else { if(score < bestScore) { bestScore = score; chosenMove = m; } beta = Math.min(beta, bestScore); }
+            if(beta <= alpha) break;
+        }
+        return { score: bestScore, move: chosenMove };
+    }
+
+    function evaluate(g) {
+        let s = 0;
+        for(let l=0; l<10; l++) for(let c=0; c<10; c++) {
+            let v = g[l][c]; if(!v) continue;
+            if(v===1) s -= (10 + (9-l)); else if(v===2) s += (10+l);
+            else if(v===3) s -= 50; else if(v===4) s += 50;
+        }
+        return s + Math.random();
+    }
+
+    function applyMove(g, m) {
+        const p = g[m.fl][m.fc]; if(m.victL !== undefined) g[m.victL][m.victC] = 0;
+        g[m.tl][m.tc] = p; g[m.fl][m.fc] = 0;
+        if((m.tl===0 && p===1) || (m.tl===9 && p===2)) if(p<3) g[m.tl][m.tc]+=2;
+    }
+
+    function getCapturesForPiece(g, pos) {
+        const moves = [], p = g[pos.l][pos.c], isDame = p > 2;
+        const dirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
+        dirs.forEach(d => {
+            let nl = pos.l+d[0], nc = pos.c+d[1], vict = null;
+            if(isDame) {
+                while(nl>=0 && nl<10 && nc>=0 && nc<10) {
+                    if(g[nl][nc] !== 0) { if(g[nl][nc]%2 !== p%2 && !vict) vict = {l:nl, c:nc}; else break; }
+                    else if(vict) moves.push({fl:pos.l, fc:pos.c, tl:nl, tc:nc, victL:vict.l, victC:vict.c, isCap:true});
+                    nl+=d[0]; nc+=d[1];
+                }
+            } else {
+                let tl=pos.l+d[0]*2, tc=pos.c+d[1]*2, ml=pos.l+d[0], mc=pos.c+d[1];
+                if(tl>=0 && tl<10 && tc>=0 && tc<10 && g[tl][tc]===0 && g[ml][mc]!==0 && g[ml][mc]%2!==p%2)
+                    moves.push({fl:pos.l, fc:pos.c, tl, tc, victL:ml, victC:mc, isCap:true});
+            }
+        });
+        return moves;
+    }
+
+    function getMovesForPiece(g, pos, caps) {
+        if(caps.length>0) return caps.filter(m=>m.fl===pos.l && m.fc===pos.c);
+        const p = g[pos.l][pos.c], moves = [], isDame = p>2;
+        const dirs = isDame ? [[1,1],[1,-1],[-1,1],[-1,-1]] : (p===1?[[-1,1],[-1,-1]]:[[1,1],[1,-1]]);
+        dirs.forEach(d => {
+            let nl=pos.l+d[0], nc=pos.c+d[1];
+            while(nl>=0 && nl<10 && nc>=0 && nc<10 && g[nl][nc]===0) {
+                moves.push({fl:pos.l, fc:pos.c, tl:nl, tc:nc, isCap:false}); if(!isDame) break;
+                nl+=d[0]; nc+=d[1];
+            }
+        });
+        return moves;
+    }
+
+    function getAllMoves(g, p) { let res = []; for(let l=0; l<10; l++) for(let c=0; c<10; c++) if(g[l][c]!==0 && g[l][c]%2===p%2) res.push(...getMovesForPiece(g, {l,c}, [])); return res; }
+    function getCaptures(g, p) { let res = []; for(let l=0; l<10; l++) for(let c=0; c<10; c++) if(g[l][c]!==0 && g[l][c]%2===p%2) res.push(...getCapturesForPiece(g, {l,c})); return res; }
+    function cycleLevel() { if(gameStarted) return; aiLevel = (aiLevel % 3) + 1; lvlBtn.innerText = "Niveau: " + (aiLevel===1?"Débutant":aiLevel===2?"Interm.":"Expert"); lvlBtn.style.background = aiLevel===1?"#27ae60":aiLevel===2?"#d35400":"#c0392b"; }
+    function toggleMode() { if(gameStarted) return; isAIMode = !isAIMode; document.getElementById('modeBtn').innerText = isAIMode ? "IA Active" : "2 Joueurs"; document.getElementById('mode-label').innerText = isAIMode ? "MODE: IA" : "MODE: J vs J"; lvlBtn.style.display = isAIMode ? "block" : "none"; }
+
+    // Service Worker Minimaliste pour mode Hors Ligne
+    if ('serviceWorker' in navigator) {
+        const sw = 'self.addEventListener("fetch", (e) => e.respondWith(fetch(e.request)));';
+        const blob = new Blob([sw], {type: 'text/javascript'});
+        navigator.serviceWorker.register(URL.createObjectURL(blob));
+    }
+
+    init();
+</script>
+</body>
+</html>

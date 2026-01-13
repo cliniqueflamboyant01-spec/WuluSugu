@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fakoly Waraba | Pionnier de la Radio Numérique</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gold: #ffcc00;
+            --radio-red: #ff3e3e;
+            --deep-black: #050505;
+            --tech-blue: #00d4ff;
+        }
+
+        body {
+            margin: 0;
+            background-color: var(--deep-black);
+            color: #ffffff;
+            font-family: 'Space Grotesk', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* Effet d'ondes radio animées en fond */
+        .waves-container {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.2;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
+        }
+
+        /* Header avec l'insigne "LIVE" numérique */
+        .live-status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Syncopate', sans-serif;
+            font-size: 0.7rem;
+            color: var(--radio-red);
+        }
+
+        .blink {
+            width: 10px;
+            height: 10px;
+            background-color: var(--radio-red);
+            border-radius: 50%;
+            animation: blinker 1.5s infinite;
+        }
+
+        .main-hero {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .lion-shield {
+            font-size: 4rem;
+            text-shadow: 0 0 20px var(--primary-gold);
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-family: 'Syncopate', sans-serif;
+            font-size: clamp(2rem, 8vw, 4.5rem);
+            letter-spacing: 15px;
+            margin: 0;
+            background: linear-gradient(90deg, #fff, var(--primary-gold), #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .title-sub {
+            font-size: 1.2rem;
+            letter-spacing: 5px;
+            color: var(--tech-blue);
+            text-transform: uppercase;
+            margin-top: 10px;
+            font-weight: 300;
+        }
+
+        /* Carte Identité - Heritage & Tech */
+        .heritage-box {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 204, 0, 0.2);
+            backdrop-filter: blur(15px);
+            padding: 40px;
+            max-width: 900px;
+            margin: -100px auto 50px;
+            border-radius: 2px;
+            position: relative;
+        }
+
+        .legacy-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .tag {
+            border: 1px solid var(--tech-blue);
+            padding: 5px 15px;
+            font-size: 0.8rem;
+            color: var(--tech-blue);
+            font-family: monospace;
+        }
+
+        .bio-text {
+            font-size: 1.2rem;
+            line-height: 1.8;
+            color: #ccc;
+        }
+
+        .highlight {
+            color: var(--primary-gold);
+            font-weight: bold;
+        }
+
+        .radio-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: white;
+            text-decoration: none;
+            border-bottom: 2px solid var(--radio-red);
+            padding-bottom: 5px;
+            transition: 0.3s;
+        }
+
+        .radio-link:hover {
+            color: var(--radio-red);
+        }
+
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+
+        /* Visualiseur audio factice (CSS pure) */
+        .audio-viz {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 30px;
+            margin-top: 20px;
+        }
+        .bar { width: 3px; background: var(--primary-gold); animation: wave 1s infinite alternate; }
+        .bar:nth-child(2) { height: 10px; animation-delay: 0.2s; }
+        .bar:nth-child(3) { height: 25px; animation-delay: 0.4s; }
+        .bar:nth-child(4) { height: 15px; animation-delay: 0.6s; }
+
+        @keyframes wave {
+            from { height: 5px; }
+            to { height: 30px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="waves-container"></div>
+
+    <div class="live-status">
+        <div class="blink"></div>
+        <span>ON AIR | DIGITAL TRANSMISSION</span>
+    </div>
+
+    <section class="main-hero">
+        <div class="lion-shield">🦁</div>
+        <h1>FAKOLY WARABA</h1>
+        <div class="title-sub">Architecte Numérique & Visionnaire</div>
+        
+        <div class="audio-viz">
+            <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        </div>
+    </section>
+
+    <div class="heritage-box">
+        <div class="legacy-tags">
+            <span class="tag">DÉVELOPPEUR AGRÉÉ</span>
+            <span class="tag">RADIO NUMÉRIQUE</span>
+            <span class="tag">MALI TECH PIONEER</span>
+            <span class="tag">RADIO BULA</span>
+        </div>
+
+        <div class="bio-text">
+            Développeur d'élite et bâtisseur d'infrastructures, <span class="highlight">Fakoly Waraba</span> est l'une des pierres angulaires de la révolution médiatique au Mali. 
+            Co-créateur de solutions innovantes pour la <span class="highlight">Radio Numérique</span>, il a su marier le code et les ondes pour donner une voix moderne au pays, notamment à travers des projets emblématiques comme <strong>Radio BULA</strong>.
+        </div>
+
+        <a href="#" class="radio-link">DÉCOVRIR SES INNOVATIONS RADIOPHONIQUES →</a>
+    </div>
+
+    <footer style="text-align: center; padding: 50px; font-size: 0.7rem; letter-spacing: 3px; opacity: 0.5;">
+        SYSTÈME CONÇU POUR L'EXCELLENCE - MALI DIGITAL LEGACY &copy; 2026
+    </footer>
+
+</body>
+</html>

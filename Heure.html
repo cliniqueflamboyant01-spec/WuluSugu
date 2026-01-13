@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Matrix & Tubes 3D</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@900&family=Orbitron:wght@900&family=Bebas+Neue&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body, html { 
+            width: 100%; height: 100%; overflow: hidden; 
+            background: #000;
+            font-family: 'Montserrat', sans-serif;
+            touch-action: none; 
+        }
+
+        /* Canvas Matrix (Fond) */
+        #matrixCanvas {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%; z-index: 1;
+            opacity: 0.6; /* Un peu transparent pour voir les tubes */
+        }
+
+        /* Canvas Tubes (Milieu) */
+        #tubesCanvas {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%; z-index: 2;
+            mix-blend-mode: screen;
+        }
+
+        /* Interface (Premier plan) */
+        .interface {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10; color: white; text-align: center;
+            pointer-events: none; width: 100%;
+        }
+
+        #clock { 
+            font-size: clamp(5rem, 28vw, 15rem); 
+            line-height: 0.9; 
+            text-shadow: 0 0 30px rgba(0,0,0,0.8);
+            transition: color 0.4s, font-family 0.3s;
+        }
+        
+        #date { 
+            font-size: clamp(0.8rem, 5vw, 1.8rem); 
+            letter-spacing: 5px; margin-top: 15px; 
+            text-transform: uppercase; font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="matrixCanvas"></canvas>
+    <canvas id="tubesCanvas"></canvas>
+
+    <div class="interface">
+        <h1 id="clock">00:00</h1>
+        <p id="date">DATE</p>
+    </div>
+
+    <script type="module">
+        import TubesCursor from "https://cdn.jsdelivr.net/npm/threejs-components@0.0.19/build/cursors/tubes1.min.js"
+
+        // --- 1. CONFIGURATION TUBES ---
+        const tubesApp = TubesCursor(document.getElementById('tubesCanvas'), {
+            tubes: {
+                colors: ["#4158D0", "#C850C0", "#FFCC70"],
+                lights: { intensity: 500, colors: ["#ffffff", "#FFCC70"] }
+            }
+        });
+
+        // --- 2. CONFIGURATION MATRIX ---
+        const mCanvas = document.getElementById('matrixCanvas');
+        const mCtx = mCanvas.getContext('2d');
+        mCanvas.width = window.innerWidth;
+        mCanvas.height = window.innerHeight;
+
+        const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄ';
+        const fontSize = 16;
+        const columns = mCanvas.width / fontSize;
+        const drops = Array.from({ length: columns }).fill(1);
+        let matrixColor = '#4158D0';
+
+        function drawMatrix() {
+            mCtx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            mCtx.fillRect(0, 0, mCanvas.width, mCanvas.height);
+            mCtx.fillStyle = matrixColor;
+            mCtx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < drops.length; i++) {
+                const text = chars[Math.floor(Math.random() * chars.length)];
+                mCtx.fillText(text, i * fontSize, drops[i] * fontSize);
+                if (drops[i] * fontSize > mCanvas.height && Math.random() > 0.975) drops[i] = 0;
+                drops[i]++;
+            }
+        }
+
+        // --- 3. INTERACTION COMMUNE ---
+        const clockEl = document.getElementById('clock');
+        const fonts = ['Montserrat', 'Orbitron', 'Bebas Neue'];
+        let fontIdx = 0;
+
+        window.addEventListener('pointerdown', () => {
+            const rc = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
+            const c1 = rc();
+            const c2 = rc();
+
+            // Change Matrix
+            matrixColor = c1;
+
+            // Change Tubes
+            tubesApp.tubes.setColors([c1, c2, rc()]);
+
+            // Change Heure
+            clockEl.style.color = c1;
+            fontIdx = (fontIdx + 1) % fonts.length;
+            clockEl.style.fontFamily = fonts[fontIdx];
+        });
+
+        // --- 4. BOUCLES D'UPDATE ---
+        function update() {
+            drawMatrix();
+            requestAnimationFrame(update);
+        }
+
+        function updateClock() {
+            const now = new Date();
+            clockEl.textContent = now.getHours().toString().padStart(2,'0') + ":" + now.getMinutes().toString().padStart(2,'0');
+            const opt = { weekday: 'long', day: 'numeric', month: 'long' };
+            document.getElementById('date').textContent = now.toLocaleDateString('fr-FR', opt).toUpperCase();
+        }
+
+        window.onresize = () => {
+            mCanvas.width = window.innerWidth;
+            mCanvas.height = window.innerHeight;
+        };
+
+        update();
+        setInterval(updateClock, 1000);
+        updateClock();
+    </script>
+</body>
+</html>

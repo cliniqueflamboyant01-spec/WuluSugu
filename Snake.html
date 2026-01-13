@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Snake Bubbles - Zen Edition</title>
+    <style>
+        :root {
+            --neon-cyan: #00ffcc;
+            --neon-pink: #ff3e3e;
+            --neon-gold: #ffcc00;
+            --bg-dark: #0f0f12;
+            --game-bg: #1a1a24;
+        }
+
+        body {
+            margin: 0; padding: 0; background: var(--bg-dark); color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden; touch-action: none;
+        }
+
+        #background-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+
+        #menu {
+            position: absolute; background: rgba(10, 10, 15, 0.98);
+            width: 100%; height: 100%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 20;
+            backdrop-filter: blur(10px); text-align: center;
+        }
+
+        .header-ui {
+            display: flex; justify-content: space-between; align-items: center;
+            width: 90vw; max-width: 400px; margin-bottom: 10px; z-index: 10;
+        }
+
+        #ui-stats { display: flex; gap: 15px; font-size: 16px; color: var(--neon-cyan); font-weight: bold; }
+        #level { transition: all 0.3s; }
+        .hs-label { color: var(--neon-gold); }
+
+        .menu-btn {
+            width: 220px; padding: 14px; margin: 8px;
+            border: 2px solid var(--neon-cyan); background: transparent;
+            color: var(--neon-cyan); font-size: 18px; border-radius: 50px; 
+            font-weight: bold; cursor: pointer; transition: all 0.3s;
+        }
+        .menu-btn:hover { background: var(--neon-cyan); color: #000; box-shadow: 0 0 15px var(--neon-cyan); }
+        
+        .btn-dame { border-color: var(--neon-gold); color: var(--neon-gold); text-decoration: none; margin-top: 20px; display: inline-block; }
+        .btn-dame:hover { background: var(--neon-gold); color: #000; box-shadow: 0 0 15px var(--neon-gold); }
+
+        .canvas-container { position: relative; z-index: 5; }
+        canvas#game { background: var(--game-bg); border: 3px solid #334; border-radius: 15px; display: block; }
+        
+        #pause-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center;
+            font-size: 32px; color: var(--neon-cyan); border-radius: 12px;
+        }
+
+        .controls {
+            margin-top: 25px; display: grid; z-index: 10;
+            grid-template-columns: repeat(3, 75px); grid-template-rows: repeat(2, 75px); gap: 12px;
+        }
+        .btn {
+            width: 75px; height: 75px; background: rgba(50, 50, 70, 0.6); 
+            border: 1px solid #445; border-radius: 20px; color: white; font-size: 24px;
+            display: flex; align-items: center; justify-content: center; user-select: none;
+        }
+        .btn:active { background: var(--neon-cyan); color: #000; }
+        .up { grid-column: 2; grid-row: 1; }
+        .left { grid-column: 1; grid-row: 2; }
+        .down { grid-column: 2; grid-row: 2; }
+        .right { grid-column: 3; grid-row: 2; }
+    </style>
+</head>
+<body>
+
+    <canvas id="background-canvas"></canvas>
+
+    <div id="menu">
+        <h1 id="menu-title" style="color:var(--neon-cyan); text-shadow: 0 0 15px var(--neon-cyan); font-size: 3rem; margin:0;">SNAKE</h1>
+        <p id="menu-hs" style="color:var(--neon-gold); margin-bottom:10px; font-weight:bold;">RECORD: 0</p>
+        <p id="final-score" style="color:white; margin-bottom:20px; font-size: 1.2rem; display:none;">SCORE FINAL: 0</p>
+        
+        <div id="difficulty-btns">
+            <button class="menu-btn" onclick="startGame(400)">FACILE (ZEN)</button>
+            <button class="menu-btn" onclick="startGame(300)">NORMAL</button>
+            <button class="menu-btn" onclick="startGame(200)">DÉFI</button>
+        </div>
+
+        <button id="btn-restart" class="menu-btn" style="display:none;" onclick="showHome()">RETOUR</button>
+        <a href="Dame.html" class="menu-btn btn-dame">JOUER AUX DAMES</a>
+    </div>
+
+    <div class="header-ui">
+        <div id="ui-stats">
+            <span>SCORE: <span id="score">0</span></span>
+            <span class="hs-label">HS: <span id="highscore">0</span></span>
+            <span>LVL: <span id="level">1</span></span>
+        </div>
+        <button class="menu-btn" style="width:auto; padding:5px 15px; font-size:14px; margin:0;" onclick="togglePause()">PAUSE</button>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="game"></canvas>
+        <div id="pause-overlay">PAUSE</div>
+    </div>
+
+    <div class="controls">
+        <div class="btn up" onpointerdown="handleDir(0, -20)">▲</div>
+        <div class="btn left" onpointerdown="handleDir(-20, 0)">◀</div>
+        <div class="btn down" onpointerdown="handleDir(0, 20)">▼</div>
+        <div class="btn right" onpointerdown="handleDir(20, 0)">▶</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("game");
+        const ctx = canvas.getContext("2d");
+        const bgCanvas = document.getElementById("background-canvas");
+        const bgCtx = bgCanvas.getContext("2d");
+        
+        let gridSize = 20, w, h, snake, food, dx, dy, nextDx, nextDy, score, level, gameTimeout;
+        let isPaused = false, isGolden = false, baseSpeed = 400, foodCounter = 0;
+        let particles = [];
+        let highScore = localStorage.getItem("snakeBubbles_HS") || 0;
+
+        // --- AUDIO ENGINE ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+        function playSound(type) {
+            if (!audioCtx) audioCtx = new AudioContext();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            if (type === 'eat') {
+                osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+            } else if (type === 'levelUp') {
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+            } else {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = (Math.random() - 0.5) * 5;
+                this.speedY = (Math.random() - 0.5) * 5;
+                this.color = color; this.life = 1.0;
+            }
+            update() { this.x += this.speedX; this.y += this.speedY; this.life -= 0.03; }
+            draw() {
+                ctx.globalAlpha = this.life; ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function init() {
+            bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight;
+            const size = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.4);
+            canvas.width = Math.floor(size / gridSize) * gridSize;
+            canvas.height = canvas.width;
+            w = canvas.width; h = canvas.height;
+            document.getElementById("highscore").innerText = highScore;
+            document.getElementById("menu-hs").innerText = "RECORD: " + highScore;
+        }
+
+        function startGame(speed) {
+            if (audioCtx) audioCtx.resume();
+            baseSpeed = speed;
+            foodCounter = 0;
+            document.getElementById("menu").style.display = "none";
+            score = 0; level = 1;
+            document.getElementById("score").innerText = "0";
+            document.getElementById("level").innerText = "1";
+            snake = [{x: gridSize * 5, y: gridSize * 5}];
+            dx = gridSize; dy = 0; nextDx = dx; nextDy = dy;
+            placeFood(); run();
+        }
+
+        function placeFood() {
+            food = { x: Math.floor(Math.random()*(w/gridSize))*gridSize, y: Math.floor(Math.random()*(h/gridSize))*gridSize };
+            isGolden = Math.random() < 0.1;
+            if(snake.some(s => s.x === food.x && s.y === food.y)) placeFood();
+        }
+
+        function handleDir(nx, ny) {
+            if ((nx !== 0 && dx === 0) || (ny !== 0 && dy === 0)) { nextDx = nx; nextDy = ny; }
+        }
+
+        function showGameOver() {
+            document.getElementById("menu-title").innerText = "GAME OVER";
+            document.getElementById("menu-title").style.color = "var(--neon-pink)";
+            document.getElementById("final-score").innerText = "SCORE FINAL: " + score;
+            document.getElementById("final-score").style.display = "block";
+            document.getElementById("difficulty-btns").style.display = "none";
+            document.getElementById("btn-restart").style.display = "inline-block";
+            document.getElementById("menu").style.display = "flex";
+        }
+
+        function showHome() {
+            document.getElementById("menu-title").innerText = "SNAKE";
+            document.getElementById("menu-title").style.color = "var(--neon-cyan)";
+            document.getElementById("difficulty-btns").style.display = "block";
+            document.getElementById("btn-restart").style.display = "none";
+            document.getElementById("final-score").style.display = "none";
+        }
+
+        function run() {
+            if (isPaused) return;
+            dx = nextDx; dy = nextDy;
+            const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+            if (head.x < 0 || head.x >= w || head.y < 0 || head.y >= h || snake.some(s => s.x === head.x && s.y === head.y)) {
+                playSound('dead');
+                if (score > highScore) { highScore = score; localStorage.setItem("snakeBubbles_HS", score); }
+                showGameOver(); return;
+            }
+
+            snake.unshift(head);
+            if (head.x === food.x && head.y === food.y) {
+                score += isGolden ? 50 : 10;
+                foodCounter++;
+                
+                if (foodCounter % 5 === 0) {
+                    level++;
+                    baseSpeed = Math.max(80, baseSpeed - 25);
+                    playSound('levelUp');
+                    const lvlEl = document.getElementById("level");
+                    lvlEl.style.fontSize = "1.8rem";
+                    lvlEl.style.color = "var(--neon-gold)";
+                    setTimeout(() => { lvlEl.style.fontSize = "16px"; lvlEl.style.color = "var(--neon-cyan)"; }, 500);
+                } else {
+                    playSound('eat');
+                }
+
+                for(let i=0; i<10; i++) particles.push(new Particle(food.x+10, food.y+10, isGolden?"#ffcc00":"#ff3e3e"));
+                document.getElementById("score").innerText = score;
+                document.getElementById("level").innerText = level;
+                placeFood();
+            } else { snake.pop(); }
+
+            // Plateau Opaque (Fini les traînées)
+            ctx.fillStyle = "#1a1a24"; ctx.fillRect(0, 0, w, h);
+            particles.forEach((p, i) => { p.update(); p.draw(); if(p.life<=0) particles.splice(i,1); });
+
+            // Food 
+            const pulse = Math.sin(Date.now()/300)*2;
+            ctx.fillStyle = isGolden? "#ffcc00":"#ff3e3e";
+            ctx.beginPath(); ctx.arc(food.x+10, food.y+10, 7+pulse, 0, 7); ctx.fill();
+
+            // Serpent Deluxe
+            snake.forEach((seg, i) => {
+                ctx.save(); ctx.translate(seg.x+10, seg.y+10);
+                if (i === 0) {
+                    if (dx>0) ctx.rotate(0); else if (dx<0) ctx.rotate(Math.PI);
+                    else if (dy>0) ctx.rotate(Math.PI/2); else ctx.rotate(-Math.PI/2);
+                    ctx.fillStyle = "#00ffcc"; ctx.beginPath(); ctx.roundRect(-10,-9,20,18,8); ctx.fill();
+                    ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(4,-4,3,0,7); ctx.arc(4,4,3,0,7); ctx.fill();
+                    if(Math.floor(Date.now()/400)%2===0) { 
+                        ctx.strokeStyle="#ff3e3e"; ctx.lineWidth=2; ctx.beginPath(); 
+                        ctx.moveTo(10,0); ctx.lineTo(16,0); ctx.stroke();
+                    }
+                } else {
+                    ctx.fillStyle = i%2===0?"#00d4aa":"#008a6d";
+                    const s = 16 - (i/snake.length)*4;
+                    ctx.beginPath(); ctx.roundRect(-s/2, -s/2, s, s, 4); ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            gameTimeout = setTimeout(run, baseSpeed);
+        }
+
+        function togglePause() { 
+            isPaused = !isPaused; 
+            document.getElementById("pause-overlay").style.display = isPaused?"flex":"none"; 
+            if(!isPaused) run(); 
+        }
+
+        window.addEventListener('resize', init);
+        init();
+        
+        function drawBG() {
+            bgCtx.clearRect(0,0,bgCanvas.width,bgCanvas.height);
+            bgCtx.fillStyle = "rgba(0, 255, 204, 0.03)";
+            for(let i=0; i<15; i++) {
+                bgCtx.beginPath();
+                bgCtx.arc((i*80)%bgCanvas.width, (i*100 + Date.now()/50)%bgCanvas.height, 3, 0, 7);
+                bgCtx.fill();
+            }
+            requestAnimationFrame(drawBG);
+        }
+        drawBG();
+    </script>
+</body>
+</html>

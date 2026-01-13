@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Temple Run - L'Aventure Ultime</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #27ae60; font-family: 'Arial Black', sans-serif; touch-action: none; }
+        canvas { display: block; margin: auto; }
+        
+        #ui { position: absolute; top: 10px; width: 100%; color: white; text-align: center; pointer-events: none; text-shadow: 2px 2px 0px rgba(0,0,0,0.5); z-index: 10; }
+        .stats { display: flex; justify-content: space-around; align-items: center; background: rgba(0,0,0,0.5); padding: 10px; border-bottom: 3px solid #f1c40f; }
+        
+        #pauseBtn { position: absolute; top: 85px; right: 20px; width: 45px; height: 45px; background: rgba(0,0,0,0.6); color: white; border: 2px solid white; border-radius: 50%; font-size: 18px; cursor: pointer; pointer-events: auto; z-index: 15; display: flex; justify-content: center; align-items: center; }
+
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: none; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 20; text-align: center; }
+        .btn-menu { padding: 15px 35px; font-size: 18px; background: #f1c40f; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; color: #2c3e50; margin: 8px; min-width: 220px; transition: transform 0.1s; }
+        .btn-menu:active { transform: scale(0.95); }
+        
+        #highScoreDisplay { color: #f1c40f; font-size: 14px; margin-top: 5px; }
+        #speedAlert { position: absolute; top: 35%; width: 100%; font-size: 40px; color: #f1c40f; display: none; text-align: center; z-index: 15; animation: pulse 0.5s infinite alternate; pointer-events: none; }
+        #shieldTimer { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); color: #3498db; background: rgba(0,0,0,0.8); padding: 10px 25px; border-radius: 30px; display: none; border: 2px solid #3498db; }
+
+        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.2); } }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="stats">
+            <div>❤️ <span id="viesDisplay">3</span></div>
+            <div>🏆 <span id="scoreDisplay">0</span><div id="highScoreDisplay">RECORD: 0</div></div>
+            <div style="color: #f1c40f;">💰 <span id="coinDisplay">0</span></div>
+        </div>
+    </div>
+
+    <div id="speedAlert">VITESSE ++</div>
+    <div id="pauseBtn">⏸️</div>
+    <div id="shieldTimer">🛡️ BOUCLIER ACTIF</div>
+
+    <div id="pauseMenu" class="overlay">
+        <h2>PAUSE</h2>
+        <button id="resumeBtn" class="btn-menu">REPRENDRE</button>
+        <button class="btn-menu btn-home" style="background: #95a5a6; color: white;">ACCUEIL 🏠</button>
+    </div>
+
+    <div id="shopMenu" class="overlay">
+        <h2 style="color:#f1c40f;">BOUTIQUE 💰</h2>
+        <div style="margin-bottom: 20px;">Tes pièces : <span id="shopCoinDisplay">0</span></div>
+        <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 15px; width: 80%; margin-bottom: 10px;">
+            <p>🛡️ Bouclier + (Durée)</p>
+            <button id="buyShield" class="btn-menu" style="font-size: 14px; margin: 0; padding: 10px 20px;">Améliorer (100 💰)</button>
+        </div>
+        <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 15px; width: 80%; margin-bottom: 10px;">
+            <p>❤️ Vie Extra (Départ)</p>
+            <button id="buyLife" class="btn-menu" style="font-size: 14px; margin: 0; padding: 10px 20px;">Ajouter (250 💰)</button>
+        </div>
+        <button id="closeShop" class="btn-menu" style="background: #e74c3c; color: white;">RETOUR</button>
+    </div>
+
+    <div id="gameOverScreen" class="overlay">
+        <h2 style="color:#e74c3c; font-size: 45px; margin-bottom: 10px;">GAME OVER</h2>
+        <div id="finalScoreDisplay" style="font-size: 24px; margin-bottom: 20px;">Score: 0</div>
+        
+        <button id="saveMeBtn" class="btn-menu" style="background: #2ecc71; color: white; border: 3px solid #fff; line-height: 1.2;">
+            SAUVE-MOI ! 😇 <br> 
+            <span style="font-size: 14px;">Coût : <span id="saveCost">50</span> 💰</span>
+        </button>
+
+        <button id="restartBtn" class="btn-menu">REESSAYER</button>
+        <button id="shopBtn" class="btn-menu" style="background: #3498db; color: white;">BOUTIQUE 🛒</button>
+        <button class="btn-menu btn-home" style="background: #95a5a6; color: white;">ACCUEIL 🏠</button>
+        
+        <div id="newRecordMsg" style="color: #f1c40f; display: none; margin: 10px 0;">NOUVEAU RECORD !</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const lanes = [canvas.width * 0.25, canvas.width * 0.5, canvas.width * 0.75];
+const colors = ["#e74c3c", "#e67e22", "#9b59b6", "#34495e", "#16a085", "#2c3e50"];
+
+let score, lives, gameActive, isPaused, speed, obstacles, player, coins, heartBonus, shields, totalCoins, highScore, lastMilestone, shieldsInLevel;
+let shieldLevel, extraLivesLevel, screenShake = 0, redFlash = 0, particles = [];
+let currentSaveCost = 50;
+
+function initGame() {
+    totalCoins = parseInt(localStorage.getItem("templeTotalCoins")) || 0;
+    highScore = parseInt(localStorage.getItem("templeHighScore")) || 0;
+    shieldLevel = parseInt(localStorage.getItem("shieldLevel")) || 1;
+    extraLivesLevel = parseInt(localStorage.getItem("extraLivesLevel")) || 0;
+
+    score = 0; 
+    lives = 3 + extraLivesLevel; 
+    currentSaveCost = 50;
+    gameActive = true; 
+    isPaused = false; 
+    speed = 10;
+    lastMilestone = 0; 
+    shieldsInLevel = 0;
+    obstacles = []; coins = []; heartBonus = []; shields = []; particles = [];
+    
+    player = { 
+        x: lanes[1], y: canvas.height * 0.82, targetX: lanes[1], w: 50, h: 70, 
+        jumpY: 0, jumpSpeed: 0, isJumping: false, gravity: 0.9,
+        shieldActive: false, shieldTime: 0 
+    };
+    
+    document.getElementById("gameOverScreen").style.display = "none";
+    document.getElementById("pauseMenu").style.display = "none";
+    document.getElementById("newRecordMsg").style.display = "none";
+    updateUI();
+    gameLoop();
+}
+
+function updateUI() {
+    document.getElementById("scoreDisplay").innerText = score;
+    document.getElementById("viesDisplay").innerText = lives;
+    document.getElementById("coinDisplay").innerText = totalCoins;
+    document.getElementById("highScoreDisplay").innerText = "RECORD: " + highScore;
+}
+
+// LOGIQUE RETOUR MENU
+document.querySelectorAll(".btn-home").forEach(btn => {
+    btn.onclick = () => {
+        window.location.href = "index.html"; 
+    };
+});
+
+// SAUVETAGE
+document.getElementById("saveMeBtn").onclick = () => {
+    if (totalCoins >= currentSaveCost) {
+        totalCoins -= currentSaveCost;
+        localStorage.setItem("templeTotalCoins", totalCoins);
+        lives = 1;
+        gameActive = true;
+        isPaused = false;
+        player.shieldActive = true;
+        player.shieldTime = 120; 
+        obstacles = obstacles.filter(o => o.y < 0 || o.y > canvas.height * 0.5);
+        currentSaveCost *= 2; 
+        document.getElementById("gameOverScreen").style.display = "none";
+        updateUI();
+        gameLoop();
+    }
+};
+
+// Contrôles
+document.getElementById("pauseBtn").onclick = () => { if(gameActive) { isPaused = true; document.getElementById("pauseMenu").style.display = "flex"; }};
+document.getElementById("resumeBtn").onclick = () => { isPaused = false; document.getElementById("pauseMenu").style.display = "none"; gameLoop(); };
+document.getElementById("restartBtn").onclick = initGame;
+document.getElementById("shopBtn").onclick = () => {
+    document.getElementById("gameOverScreen").style.display = "none";
+    document.getElementById("shopMenu").style.display = "flex";
+    document.getElementById("shopCoinDisplay").innerText = totalCoins;
+};
+document.getElementById("closeShop").onclick = () => {
+    document.getElementById("shopMenu").style.display = "none";
+    document.getElementById("gameOverScreen").style.display = "flex";
+};
+
+// Achats Boutique
+document.getElementById("buyShield").onclick = () => {
+    if (totalCoins >= 100) {
+        totalCoins -= 100; shieldLevel++;
+        localStorage.setItem("templeTotalCoins", totalCoins);
+        localStorage.setItem("shieldLevel", shieldLevel);
+        document.getElementById("shopCoinDisplay").innerText = totalCoins;
+    }
+};
+document.getElementById("buyLife").onclick = () => {
+    if (totalCoins >= 250) {
+        totalCoins -= 250; extraLivesLevel++;
+        localStorage.setItem("templeTotalCoins", totalCoins);
+        localStorage.setItem("extraLivesLevel", extraLivesLevel);
+        document.getElementById("shopCoinDisplay").innerText = totalCoins;
+    }
+};
+
+// Tactile
+let touchStartX = 0;
+window.addEventListener("touchstart", (e) => {
+    touchStartX = e.touches[0].clientX;
+    if (!player.isJumping && gameActive && !isPaused) { player.isJumping = true; player.jumpSpeed = -18; }
+});
+window.addEventListener("touchend", (e) => {
+    let diff = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(diff) > 40 && gameActive && !isPaused) {
+        let idx = lanes.indexOf(player.targetX);
+        if (diff < 0 && idx > 0) player.targetX = lanes[idx - 1];
+        if (diff > 0 && idx < 2) player.targetX = lanes[idx + 1];
+    }
+});
+
+function gameLoop() {
+    if (!gameActive || isPaused) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (screenShake > 0) {
+        let dx = Math.random() * screenShake - screenShake / 2;
+        let dy = Math.random() * screenShake - screenShake / 2;
+        ctx.setTransform(1, 0, 0, 1, dx, dy);
+        screenShake *= 0.9;
+    } else { ctx.setTransform(1, 0, 0, 1, 0, 0); }
+
+    ctx.fillStyle = "#2ecc71"; ctx.fillRect(0,0,canvas.width, canvas.height);
+    ctx.fillStyle = "#34495e"; ctx.beginPath();
+    ctx.moveTo(0, canvas.height); ctx.lineTo(canvas.width*0.4, 0);
+    ctx.lineTo(canvas.width*0.6, 0); ctx.lineTo(canvas.width, canvas.height); ctx.fill();
+
+    player.x += (player.targetX - player.x) * 0.2;
+    if (player.isJumping) {
+        player.jumpY += player.jumpSpeed; player.jumpSpeed += player.gravity;
+        if (player.jumpY >= 0) { player.jumpY = 0; player.isJumping = false; }
+    }
+
+    if (player.shieldActive) {
+        player.shieldTime--;
+        document.getElementById("shieldTimer").style.display = "block";
+        if (player.shieldTime <= 0) { player.shieldActive = false; document.getElementById("shieldTimer").style.display = "none"; }
+    }
+
+    if (Math.random() < 0.03) {
+        let type = Math.random() > 0.8 ? "trunk" : "block";
+        obstacles.push({lane: Math.floor(Math.random()*3), y: -100, active: true, type: type});
+    }
+    if (Math.random() < 0.05) coins.push({lane: Math.floor(Math.random()*3), y: -50});
+    if (Math.random() < 0.002) heartBonus.push({lane: Math.floor(Math.random()*3), y: -50});
+    if (shieldsInLevel < 2 && Math.random() < 0.003) { shields.push({lane: Math.floor(Math.random()*3), y: -50}); shieldsInLevel++; }
+
+    particles.forEach((p, i) => {
+        p.x += (p.targetX - p.x) * 0.12; p.y += (p.targetY - p.y) * 0.12; p.alpha -= 0.02;
+        ctx.fillStyle = `rgba(241, 196, 15, ${p.alpha})`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+        if (p.alpha <= 0) particles.splice(i, 1);
+    });
+
+    [coins, heartBonus, shields].forEach((list, idx) => {
+        list.forEach((it, i) => {
+            it.y += speed;
+            if (idx === 0) { ctx.fillStyle = "#f1c40f"; ctx.beginPath(); ctx.arc(lanes[it.lane], it.y, 10, 0, Math.PI*2); ctx.fill(); }
+            else if (idx === 1) ctx.fillText("❤️", lanes[it.lane]-12, it.y);
+            else ctx.fillText("🛡️", lanes[it.lane]-12, it.y);
+
+            if (Math.abs(player.x - lanes[it.lane]) < 35 && Math.abs((player.y+player.jumpY) - it.y) < 35) {
+                if (idx === 0) { 
+                    totalCoins++;
+                    for(let j=0; j<5; j++) particles.push({x: lanes[it.lane], y: it.y, targetX: canvas.width*0.8, targetY: 40, size: Math.random()*5+2, alpha: 1});
+                }
+                else if (idx === 1) { if(lives < 5) lives++; }
+                else { player.shieldActive = true; player.shieldTime = 300 + (shieldLevel * 60); }
+                list.splice(i, 1); updateUI();
+            }
+        });
+    });
+
+    let currentObstacleColor = colors[Math.floor(score / 1000) % colors.length];
+    obstacles.forEach((o, i) => {
+        o.y += speed;
+        if (o.type === "trunk") {
+            ctx.fillStyle = "#5d4037"; ctx.fillRect(lanes[o.lane]-35, o.y, 70, 60);
+            ctx.fillStyle = currentObstacleColor; ctx.fillRect(lanes[o.lane]-35, o.y+15, 70, 15);
+        } else {
+            ctx.fillStyle = currentObstacleColor; ctx.fillRect(lanes[o.lane]-30, o.y, 60, 40);
+        }
+        
+        let h = o.type === "trunk" ? 60 : 40;
+        if (o.active && Math.abs(player.x - lanes[o.lane]) < 35 && o.y+h > player.y+player.jumpY && o.y < player.y+70+player.jumpY) {
+            let safe = player.shieldActive || (o.type === "block" && player.jumpY < -20) || (o.type === "trunk" && player.jumpY < -45);
+            if (!safe) {
+                o.active = false; lives--; screenShake = 20; redFlash = 0.5;
+                if("vibrate" in navigator) navigator.vibrate(200); updateUI();
+                if (lives <= 0) endGame();
+            } else if (player.shieldActive) o.active = false;
+        }
+
+        if (o.y > canvas.height) {
+            obstacles.splice(i, 1); score += 10;
+            if (score > 0 && score % 500 === 0 && score !== lastMilestone) {
+                speed += 1.5; lastMilestone = score; shieldsInLevel = 0;
+                document.getElementById("speedAlert").innerText = score % 1000 === 0 ? "NIVEAU ++" : "VITESSE ++";
+                document.getElementById("speedAlert").style.display = "block";
+                setTimeout(() => document.getElementById("speedAlert").style.display = "none", 1200);
+            }
+            updateUI();
+        }
+    });
+
+    const runCycle = Math.sin(Date.now() / 100) * 5;
+    const py = player.y + player.jumpY;
+    ctx.save();
+    ctx.translate(player.x, py + 35);
+    ctx.rotate(player.isJumping ? 0 : runCycle * 0.05);
+    ctx.translate(-player.x, -(py + 35));
+    if (player.shieldActive) {
+        ctx.strokeStyle = "#3498db"; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(player.x, py + 30, 50, 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.fillStyle = "#5d4037"; ctx.fillRect(player.x - 15, py + 45 + (runCycle > 0 ? 5 : 0), 10, 15);
+    ctx.fillRect(player.x + 5, py + 45 + (runCycle < 0 ? 5 : 0), 10, 15);
+    ctx.fillStyle = "#d7ccc8"; ctx.fillRect(player.x - 18, py + 15, 36, 35);
+    ctx.fillStyle = "#3e2723"; ctx.fillRect(player.x - 12, py + 22, 24, 22);
+    ctx.fillStyle = "#ffdbac"; ctx.fillRect(player.x-24, py+20-(runCycle*0.5), 8, 20);
+    ctx.fillRect(player.x+16, py+20+(runCycle*0.5), 8, 20);
+    ctx.beginPath(); ctx.arc(player.x, py+8, 12, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#795548"; ctx.fillRect(player.x-20, py-2, 40, 4); ctx.fillRect(player.x-12, py-12, 24, 12);
+    ctx.restore();
+
+    if (redFlash > 0) {
+        ctx.fillStyle = `rgba(231, 76, 60, ${redFlash})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        redFlash -= 0.04;
+    }
+    requestAnimationFrame(gameLoop);
+}
+
+function endGame() {
+    gameActive = false;
+    localStorage.setItem("templeTotalCoins", totalCoins);
+    document.getElementById("saveCost").innerText = currentSaveCost;
+    const saveBtn = document.getElementById("saveMeBtn");
+    if (totalCoins < currentSaveCost) {
+        saveBtn.style.opacity = "0.5";
+        saveBtn.style.pointerEvents = "none";
+    } else {
+        saveBtn.style.opacity = "1";
+        saveBtn.style.pointerEvents = "auto";
+    }
+    if (score > highScore) { 
+        highScore = score; 
+        localStorage.setItem("templeHighScore", highScore); 
+        document.getElementById("newRecordMsg").style.display = "block"; 
+    }
+    document.getElementById("gameOverScreen").style.display = "flex";
+    document.getElementById("finalScoreDisplay").innerText = "Score Final: " + score;
+}
+
+initGame();
+</script>
+</body>
+</html>

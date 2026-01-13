@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lunar Spirit: Cyber Highway</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050508; font-family: 'Arial Black', sans-serif; touch-action: none; user-select: none; }
+        canvas { display: block; }
+        
+        #ui { position: absolute; top: 0; width: 100%; color: white; pointer-events: none; z-index: 10; }
+        .stats { display: flex; flex-direction: column; align-items: center; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); padding: 20px 0; }
+        #scoreContainer { font-size: 32px; text-shadow: 0 0 10px #5de6ff; color: #fff; margin-bottom: 5px; }
+        #secondaryStats { display: flex; gap: 30px; font-size: 14px; color: #5de6ff; }
+        .stat-item { display: flex; align-items: center; gap: 5px; }
+
+        #pauseBtn { position: absolute; bottom: 30px; left: 20px; width: 60px; height: 60px; background: rgba(93, 230, 255, 0.2); color: #5de6ff; border: 2px solid #5de6ff; border-radius: 50%; font-size: 24px; cursor: pointer; pointer-events: auto; display: flex; justify-content: center; align-items: center; z-index: 30; backdrop-filter: blur(5px); }
+        #inventory { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 30px; pointer-events: auto; z-index: 20; padding-left: 60px; }
+        .item-slot { width: 60px; height: 60px; border-radius: 15px; border: 2px solid rgba(93, 230, 255, 0.4); background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); display: flex; justify-content: center; align-items: center; font-size: 25px; position: relative; cursor: pointer; }
+        .badge { position: absolute; top: -8px; right: -8px; background: #ff4757; color: white; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; display: flex; justify-content: center; align-items: center; border: 2px solid white; }
+        
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 100; text-align: center; pointer-events: auto; }
+        .btn-menu { padding: 16px 40px; font-size: 18px; background: #5de6ff; border: none; border-radius: 50px; font-weight: bold; cursor: pointer; color: #050508; margin: 8px; text-transform: uppercase; width: 280px; }
+        .btn-revive { background: #2ecc71; color: white; }
+        .btn-secondary { background: #34495e; color: white; }
+        .btn-danger { background: #ff4757; color: white; font-size: 14px; margin-top: 15px; width: 220px; padding: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="pauseBtn">⏸</div>
+    <div id="ui">
+        <div class="stats">
+            <div id="scoreContainer">🏆 <span id="scoreDisplay">0</span></div>
+            <div id="secondaryStats">
+                <div class="stat-item" style="color: #ff4757;">❤️ <span id="livesCount">3</span></div>
+                <div class="stat-item">RECORD: <span id="bestDisplay">0</span></div>
+                <div class="stat-item" style="color: #f1c40f;">💰 <span id="coinDisplay">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="inventory">
+        <div id="btnShield" class="item-slot">🛡️<div class="badge" id="countShield">0</div></div>
+        <div id="btnMagnet" class="item-slot">🧲<div class="badge" id="countMagnet">0</div></div>
+    </div>
+
+    <div id="pauseMenu" class="overlay">
+        <h1>PAUSE</h1>
+        <button id="resumeBtn" class="btn-menu">REPRENDRE</button>
+        <button onclick="location.href='index.html'" class="btn-menu btn-secondary">MENU PRINCIPAL</button>
+        <button id="resetDataBtn" class="btn-menu btn-danger">RÉINITIALISER RECORDS</button>
+    </div>
+
+    <div id="gameOverScreen" class="overlay">
+        <h1 style="color:#ff4757; margin: 0;">GAME OVER</h1>
+        <p id="finalScoreDisplay" style="font-size: 24px; margin: 10px 0;">Score: 0</p>
+        <div id="leaderRows" style="margin-bottom: 20px;"></div>
+        <button id="reviveBtn" class="btn-menu btn-revive"></button>
+        <button onclick="location.reload()" class="btn-menu">REJOUER</button>
+        <button onclick="location.href='index.html'" class="btn-menu btn-secondary">MENU PRINCIPAL</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const lanes = [canvas.width * 0.25, canvas.width * 0.5, canvas.width * 0.75];
+let score, speed, gameActive, isPaused, totalCoins, lastMilestone, highScore;
+let player, obstacles, coins, powerUps, stars = [], roadOffset = 0;
+let stockShield = 0, stockMagnet = 0, currentReviveCost = 200;
+let topScores = JSON.parse(localStorage.getItem("lunarTop3")) || [];
+highScore = localStorage.getItem("lunarSpiritBest") || 0;
+
+// Initialisation des étoiles pour le fond
+for(let i=0; i<80; i++) {
+    stars.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, s: Math.random()*2, o: Math.random() });
+}
+
+function drawDecor() {
+    // Fond Espace
+    ctx.fillStyle = "#050508";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Étoiles
+    ctx.fillStyle = "white";
+    stars.forEach(s => {
+        s.y += (speed * 0.2) * s.s;
+        if(s.y > canvas.height) s.y = 0;
+        ctx.globalAlpha = s.o;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.s, 0, Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha = 1.0;
+
+    // Horizon Lumineux
+    let grad = ctx.createLinearGradient(0, canvas.height*0.3, 0, canvas.height*0.6);
+    grad.addColorStop(0, "transparent"); grad.addColorStop(1, "#1a0b2e");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Dessin de la Route
+    const roadW = canvas.width * 0.7;
+    const roadX = (canvas.width - roadW) / 2;
+    
+    // Sol Grille (Perspective)
+    roadOffset = (roadOffset + speed) % 100;
+    ctx.strokeStyle = "#2d1b4e";
+    ctx.lineWidth = 1;
+    for(let i = 0; i < canvas.height; i += 40) {
+        let yPos = (i + roadOffset) % canvas.height;
+        ctx.beginPath(); ctx.moveTo(0, yPos); ctx.lineTo(canvas.width, yPos); ctx.stroke();
+    }
+
+    // Bordures de route néon
+    ctx.shadowBlur = 15; ctx.shadowColor = "#5de6ff";
+    ctx.strokeStyle = "#5de6ff";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(roadX, 0); ctx.lineTo(roadX, canvas.height);
+    ctx.moveTo(roadX + roadW, 0); ctx.lineTo(roadX + roadW, canvas.height);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Lignes de séparation des voies
+    ctx.setLineDash([40, 60]);
+    ctx.lineDashOffset = -roadOffset * 2;
+    ctx.strokeStyle = "rgba(93, 230, 255, 0.2)";
+    ctx.beginPath();
+    ctx.moveTo(lanes[0] + (lanes[1]-lanes[0])/2, 0); ctx.lineTo(lanes[0] + (lanes[1]-lanes[0])/2, canvas.height);
+    ctx.moveTo(lanes[1] + (lanes[2]-lanes[1])/2, 0); ctx.lineTo(lanes[1] + (lanes[2]-lanes[1])/2, canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function drawPlayer() {
+    if (player.invul && Math.floor(Date.now() / 100) % 2 === 0) return;
+    let color = player.shield ? "#00d2ff" : (player.magnet ? "#f1c40f" : "#ffffff");
+    let runCycle = Date.now() * 0.012;
+
+    ctx.save();
+    ctx.translate(player.x, player.y + player.jumpY);
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.shadowBlur = 15; ctx.shadowColor = color;
+    
+    // Silhouette humaine simplifiée
+    ctx.beginPath(); ctx.arc(0, -35, 7, 0, Math.PI*2); ctx.fill(); // Tête
+    ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(0, -5); ctx.stroke(); // Corps
+    let legPos = player.isJumping ? 15 : Math.sin(runCycle) * 20;
+    ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(legPos, 20); ctx.stroke(); // Jambe 1
+    ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(-legPos, 20); ctx.stroke(); // Jambe 2
+    ctx.restore();
+}
+
+function gameLoop() {
+    if (!gameActive || isPaused) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    drawDecor();
+
+    // Difficulté
+    if (Math.floor(score / 500) > lastMilestone) { speed *= 1.2; lastMilestone++; }
+
+    player.x += (player.targetX - player.x) * 0.15;
+    if (player.isJumping) {
+        player.jumpY += player.jumpSpeed; player.jumpSpeed += 0.8;
+        if (player.jumpY >= 0) { player.jumpY = 0; player.isJumping = false; }
+    }
+
+    // Obstacles & Coins
+    if (Math.random() < 0.02) obstacles.push({lane: Math.floor(Math.random()*3), y: -60});
+    if (Math.random() < 0.08) coins.push({lane: Math.floor(Math.random()*3), y: -50, ox: 0});
+    if (Math.random() < 0.005) powerUps.push({lane: Math.floor(Math.random()*3), y: -50, type: Math.random() > 0.5 ? '🛡️' : '🧲'});
+
+    obstacles.forEach((o, i) => {
+        o.y += speed;
+        ctx.shadowBlur = 10; ctx.shadowColor = "#ff4757";
+        ctx.fillStyle = "#ff4757"; ctx.beginPath(); ctx.roundRect(lanes[o.lane]-25, o.y, 50, 30, 8); ctx.fill();
+        ctx.shadowBlur = 0;
+        if (!player.invul && Math.abs(player.x - lanes[o.lane]) < 40 && (o.y > player.y + player.jumpY - 20 && o.y < player.y + player.jumpY + 30)) {
+            if (player.shield) { player.shield = false; obstacles.splice(i,1); }
+            else if (player.isJumping && player.jumpY < -30) {}
+            else { player.hp--; updateUI(); if (player.hp <= 0) die(); else { player.invul = true; setTimeout(()=>player.invul=false, 2000); }}
+        }
+        if (o.y > canvas.height) { obstacles.splice(i, 1); score += 5; updateUI(); }
+    });
+
+    coins.forEach((c, i) => {
+        c.y += speed;
+        if (player.magnet) { c.ox += (player.x - (lanes[c.lane]+c.ox))*0.2; c.y += (player.y-c.y)*0.2; }
+        ctx.fillStyle = "#f1c40f"; ctx.shadowBlur = 10; ctx.shadowColor = "#f1c40f";
+        ctx.beginPath(); ctx.arc(lanes[c.lane]+c.ox, c.y, 12, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+        if (Math.abs(player.x - (lanes[c.lane]+c.ox)) < 35 && Math.abs(player.y+player.jumpY-c.y) < 35) { coins.splice(i,1); totalCoins++; score+=10; updateUI(); }
+    });
+
+    powerUps.forEach((p, i) => {
+        p.y += speed; ctx.font = "30px Arial"; ctx.fillText(p.type, lanes[p.lane]-15, p.y);
+        if (Math.abs(player.x - lanes[p.lane]) < 40 && Math.abs(player.y+player.jumpY-p.y) < 40) {
+            if(p.type === '🛡️') stockShield++; else stockMagnet++;
+            powerUps.splice(i, 1); updateUI();
+        }
+    });
+
+    drawPlayer();
+    requestAnimationFrame(gameLoop);
+}
+
+function die() {
+    gameActive = false;
+    let fs = Math.floor(score);
+    document.getElementById("finalScoreDisplay").innerText = "Score: " + fs;
+    if (fs > highScore) { highScore = fs; localStorage.setItem("lunarSpiritBest", highScore); }
+    
+    topScores.push(fs); topScores.sort((a,b)=>b-a); topScores = topScores.slice(0,3);
+    localStorage.setItem("lunarTop3", JSON.stringify(topScores));
+    
+    let rows = document.getElementById("leaderRows");
+    rows.innerHTML = `<div style="color:#5de6ff; margin-bottom:10px">TOP 3 SCORES</div>`;
+    topScores.forEach((s,i) => { rows.innerHTML += `<div style="display:flex; justify-content:space-between; width:200px; margin:auto"><span>#${i+1}</span><span>${s}</span></div>`; });
+
+    const btn = document.getElementById("reviveBtn");
+    if (totalCoins >= currentReviveCost) {
+        btn.disabled = false; btn.innerHTML = `❤️ RÉANIMER (${currentReviveCost} 💰)`;
+    } else {
+        btn.disabled = true; btn.innerHTML = "PIÈCES INSUFFISANTES";
+    }
+    document.getElementById("gameOverScreen").style.display = "flex";
+}
+
+// Events
+document.getElementById("pauseBtn").onclick = () => { isPaused = true; document.getElementById("pauseMenu").style.display = "flex"; };
+document.getElementById("resumeBtn").onclick = () => { isPaused = false; document.getElementById("pauseMenu").style.display = "none"; requestAnimationFrame(gameLoop); };
+document.getElementById("btnShield").onclick = () => { if (stockShield > 0 && !player.shield) { stockShield--; player.shield = true; updateUI(); } };
+document.getElementById("btnMagnet").onclick = () => { if (stockMagnet > 0 && !player.magnet) { stockMagnet--; player.magnet = true; updateUI(); setTimeout(() => player.magnet = false, 10000); } };
+
+let tX = 0, tY = 0;
+window.addEventListener("touchstart", e => { tX = e.touches[0].clientX; tY = e.touches[0].clientY; });
+window.addEventListener("touchend", e => {
+    if (!gameActive || isPaused) return;
+    let dx = e.changedTouches[0].clientX - tX, dy = e.changedTouches[0].clientY - tY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 30) {
+        let idx = lanes.indexOf(player.targetX);
+        if (dx > 0 && idx < 2) player.targetX = lanes[idx+1]; else if (dx < 0 && idx > 0) player.targetX = lanes[idx-1];
+    } else if (dy < -30 && !player.isJumping) { player.isJumping = true; player.jumpSpeed = -18; }
+});
+
+function initGame() {
+    score = 0; speed = 7; lastMilestone = 0; gameActive = true; isPaused = false; totalCoins = 0; currentReviveCost = 200;
+    obstacles = []; coins = []; powerUps = []; 
+    player = { x: lanes[1], targetX: lanes[1], y: canvas.height * 0.8, jumpY: 0, jumpSpeed: 0, isJumping: false, hp: 3, invul: false, shield: false, magnet: false };
+    updateUI(); requestAnimationFrame(gameLoop);
+}
+
+function updateUI() {
+    document.getElementById("scoreDisplay").innerText = Math.floor(score);
+    document.getElementById("bestDisplay").innerText = highScore;
+    document.getElementById("coinDisplay").innerText = totalCoins;
+    document.getElementById("livesCount").innerText = player.hp;
+    document.getElementById("countShield").innerText = stockShield;
+    document.getElementById("countMagnet").innerText = stockMagnet;
+}
+
+document.getElementById("reviveBtn").onclick = () => {
+    if (totalCoins >= currentReviveCost) {
+        totalCoins -= currentReviveCost; currentReviveCost *= 2;
+        player.hp = 1; player.invul = true; obstacles = []; gameActive = true;
+        document.getElementById("gameOverScreen").style.display = "none";
+        updateUI(); setTimeout(() => player.invul = false, 3000);
+        requestAnimationFrame(gameLoop);
+    }
+};
+
+document.getElementById("resetDataBtn").onclick = () => { if(confirm("Effacer records ?")) { localStorage.clear(); location.reload(); }};
+
+initGame();
+</script>
+</body>
+</html>

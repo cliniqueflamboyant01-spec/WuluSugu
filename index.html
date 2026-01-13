@@ -1,32 +1,282 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" class="scroll-smooth">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TOGOLA Store — Boutique Canine</title>
-<link rel="stylesheet" href="style.css">
-<script defer src="script.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MORY TOGOLA | Architecte Digital & CTO</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=Outfit:wght@300;400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { --neon-pink: #ff00ea; --neon-cyan: #00f2ff; --gold: #ffcc00; --bg: #000; }
+        body { background: var(--bg); color: #fff; font-family: 'Outfit', sans-serif; margin: 0; overflow-x: hidden; }
+        
+        #matrixCanvas { position: fixed; inset: 0; z-index: 1; opacity: 0.15; pointer-events: none; }
+        section { position: relative; z-index: 10; padding: 100px 20px; max-width: 1300px; margin: 0 auto; }
+
+        /* --- SMART DOCK (iOS INSPIRED) --- */
+        .smart-dock {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 12px; padding: 12px; background: rgba(15, 15, 15, 0.6);
+            backdrop-filter: blur(25px); border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 26px; z-index: 10000; box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+        .nav-item { 
+            width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; 
+            border-radius: 14px; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+            font-size: 22px; color: #555; text-decoration: none;
+        }
+        .nav-item.active { color: var(--neon-cyan); background: rgba(255, 255, 255, 0.05); transform: translateY(-5px); }
+        .nav-whatsapp { color: #25D366 !important; border: 1px solid rgba(37, 211, 102, 0.2); }
+
+        /* --- PHONE 3D DYNAMIQUE --- */
+        .phone-wrap { width: 290px; height: 550px; margin: 0 auto; perspective: 1200px; }
+        .phone-face { 
+            height: 100%; border-radius: 50px; border: 3px solid #1a1a1a; background: #000;
+            display: flex; flex-direction: column; overflow: hidden; position: relative;
+            transition: border-color 0.8s, box-shadow 0.8s;
+        }
+        .ui-app { background: rgba(255,255,255,0.03); padding: 14px; border-radius: 18px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05); transition: 0.5s; }
+
+        /* --- LABORATOIRE PREMIUM --- */
+        .lab-card {
+            background: linear-gradient(145deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%);
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 4px; padding: 28px;
+            position: relative; overflow: hidden; transition: all 0.4s ease;
+            display: flex; flex-direction: column; justify-content: space-between; min-height: 260px;
+        }
+        .lab-card:hover { transform: translateY(-8px); border-color: var(--neon-cyan); background: rgba(0, 242, 255, 0.02); }
+        .lab-card::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+            transform: translateX(-100%); transition: 0.6s;
+        }
+        .lab-card:hover::before { transform: translateX(100%); }
+        
+        .unit-tag { font-family: 'Syncopate', sans-serif; font-size: 7px; padding: 5px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--gold); display: inline-block; }
+
+        .filter-btn { padding: 10px 20px; font-family: 'Syncopate', sans-serif; font-size: 8px; text-transform: uppercase; color: rgba(255,255,255,0.4); border-radius: 8px; transition: 0.3s; letter-spacing: 2px; }
+        .filter-btn.active { color: var(--neon-cyan); background: rgba(0, 242, 255, 0.1); }
+
+        .reveal { opacity: 0; transform: translateY(40px); transition: 1s cubic-bezier(0.2, 1, 0.3, 1); }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+        .hidden-unit { display: none; }
+        .gradient-text { background: linear-gradient(90deg, var(--neon-cyan), var(--neon-pink)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    </style>
 </head>
 <body>
 
-<header>
-  <h1>TOGOLA Store</h1>
-  <nav>
-    <a href="index.html">Accueil</a>
-    <a href="chiens.html">Chiens</a>
-    <a href="produits.html">Accessoires</a>
-    <a href="contact.html">Contact</a>
-  </nav>
-</header>
+    <canvas id="matrixCanvas"></canvas>
 
-<section class="hero">
-  <h2>Élevage & Boutique Canine</h2>
-  <p>Découvrez nos chiens et accessoires premium</p>
-  <div class="buttons">
-    <a href="chiens.html" class="btn">Voir Chiens</a>
-    <a href="produits.html" class="btn">Voir Accessoires</a>
-  </div>
-</section>
+    <nav class="smart-dock">
+        <a href="#home" class="nav-item active">🏠</a>
+        <a href="#experience" class="nav-item">🏗️</a>
+        <a href="#about" class="nav-item">👤</a>
+        <a href="#works" class="nav-item">🧪</a>
+        <a href="https://wa.me/22374422494" target="_blank" class="nav-item nav-whatsapp">💬</a>
+    </nav>
 
+    <section id="home" class="min-h-screen flex flex-col items-center justify-center text-center">
+        <div class="phone-wrap mb-12" id="phone">
+            <div class="phone-face" id="phoneFace">
+                <div class="p-8 pt-16 flex flex-col h-full">
+                    <div class="ui-app flex items-center gap-3">
+                        <span class="text-xl">🦁</span>
+                        <div class="text-left"><p class="text-[10px] font-black uppercase">TOGOLA.IO</p><p class="text-[7px] opacity-40">CORE SYSTEM</p></div>
+                    </div>
+                    <div class="ui-app flex items-center gap-3">
+                        <span class="text-xl">✈️</span>
+                        <div class="text-left"><p class="text-[10px] font-black uppercase">ADVS.PRO</p><p class="text-[7px] opacity-40">LIVE UI</p></div>
+                    </div>
+                    
+                    <a href="Heure.html" class="mt-auto pb-8 block no-underline group">
+                        <div class="text-6xl font-black tracking-tighter transition-all group-hover:scale-110" id="clock" style="font-family: 'Outfit';">00:00</div>
+                        <p class="font-sync text-[8px] opacity-40 uppercase tracking-[0.5em] mt-4">Execute_System_Clock</p>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <h1 class="text-5xl md:text-9xl font-black uppercase italic leading-none reveal tracking-tighter">MORY TOGOLA</h1>
+        <p class="font-sync text-[10px] tracking-[0.7em] text-cyan-400 uppercase mt-6 reveal">Digital Architect & Industrial Designer</p>
+    </section>
+
+    <section id="experience" class="reveal">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div>
+                <h2 class="font-sync text-[10px] text-pink-500 mb-12 tracking-[0.5em] uppercase">Service_History</h2>
+                <div class="premium-card border-l-4 border-pink-500 mb-8 bg-white/5 p-8 rounded-2xl">
+                    <span class="text-yellow-500 text-[10px] font-bold uppercase tracking-widest">2023 — Présent</span>
+                    <h3 class="text-3xl font-black uppercase mt-2 italic">Freelance Creative Lead</h3>
+                    <p class="text-gray-400 text-sm mt-4 leading-relaxed font-light">Spécialiste en Design Systems pour le luxe et le voyage. Orchestration d'interfaces haut de gamme avec une rigueur technique absolue.</p>
+                </div>
+                <div class="premium-card border-l-4 border-cyan-500 bg-white/5 p-8 rounded-2xl">
+                    <span class="text-cyan-500 text-[10px] font-bold uppercase tracking-widest">2013 — 2023 | Legacy 10Y</span>
+                    <h3 class="text-3xl font-black uppercase mt-2 italic">Directeur Technique (CTO)</h3>
+                    <p class="text-gray-400 text-sm mt-4 uppercase tracking-tighter leading-relaxed font-light">I.PS.CG MALI | Expertise en BTP & Commerce Général. Pilotage complet de la transformation digitale et des infrastructures SI industrielles.</p>
+                </div>
+            </div>
+            <div class="flex items-center justify-center bg-white/5 rounded-3xl p-6 border border-white/10">
+                <canvas id="skillRadar"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <section id="about" class="reveal">
+        <div class="premium-card border-t-2 border-yellow-500 bg-white/5 p-10 rounded-3xl">
+            <h2 class="font-sync text-[10px] text-yellow-500 mb-12 tracking-[0.5em] uppercase">Design_Philosophy</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-12">
+                <div>
+                    <h4 class="text-xl font-black mb-4 gradient-text italic uppercase">Esthétique Luxe</h4>
+                    <p class="text-gray-400 text-xs leading-relaxed uppercase tracking-widest font-light">Le minimalisme comme standard. Je conçois des interfaces épurées utilisant les typographies Outfit et Syncopate pour une expérience utilisateur prestigieuse.</p>
+                </div>
+                <div>
+                    <h4 class="text-xl font-black mb-4 gradient-text italic uppercase">Rigueur Industrielle</h4>
+                    <p class="text-gray-400 text-xs leading-relaxed uppercase tracking-widest font-light">Mon passé de CTO m'impose une structure logicielle parfaite. Je crée des "Design Systems" capables de gérer des données complexes avec une simplicité intuitive.</p>
+                </div>
+                <div>
+                    <h4 class="text-xl font-black mb-4 gradient-text italic uppercase">Expérimentation 3D</h4>
+                    <p class="text-gray-400 text-xs leading-relaxed uppercase tracking-widest font-light">Le futur du web est spatial. J'intègre WebGL et Three.js pour briser les limites du design 2D et créer des environnements immersifs uniques.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="works" class="reveal">
+        <div class="flex flex-col md:flex-row justify-between items-end mb-16 gap-8">
+            <div>
+                <h2 class="font-sync text-[10px] text-white tracking-[0.5em] uppercase mb-3 opacity-40">Library_Orchestration</h2>
+                <h3 class="text-4xl font-black italic uppercase">The_Laboratory <span class="text-sm font-light opacity-30">(12_Units)</span></h3>
+            </div>
+            <div class="flex bg-white/5 p-1 rounded-xl border border-white/10" id="filterBar">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="app">Systems</button>
+                <button class="filter-btn" data-filter="game">Games</button>
+                <button class="filter-btn" data-filter="exp">Visual</button>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6" id="projectGrid"></div>
+    </section>
+
+    <script type="module">
+        // 1. Matrix Background
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+        let drops = [];
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; drops = Array(Math.floor(canvas.width/15)).fill(1); }
+        window.onresize = resize; resize();
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(0,0,0,0.1)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+            ctx.fillStyle = '#ff00ea'; ctx.font = '15px monospace';
+            drops.forEach((y, i) => {
+                ctx.fillText(Math.random() > 0.5 ? "1" : "0", i * 15, y * 15);
+                if (y * 15 > canvas.height && Math.random() > 0.98) drops[i] = 0; drops[i]++;
+            });
+            requestAnimationFrame(drawMatrix);
+        }
+        drawMatrix();
+
+        // 2. Laboratoire (12 Projets)
+        const labProjects = [
+            { name: 'ADVS Voyage', type: 'app', tech: 'NODE.JS', link: 'https://advsvoyage.ml' },
+            { name: 'WARABA Core', type: 'app', tech: 'ENGINE', link: 'WARABA.html' },
+            { name: 'FAKOLY Data', type: 'app', tech: 'PYTHON', link: 'FAKOLY.html' },
+            { name: 'Slogan AI', type: 'app', tech: 'GPT-4', link: 'Slogan.html' },
+            { name: 'Snake Legacy', type: 'game', tech: 'CANVAS', link: 'Snake.html' },
+            { name: 'Serpent 2.0', type: 'game', tech: 'WEBGL', link: 'Serpent2.html' },
+            { name: 'Strategic Dame', type: 'game', tech: 'LOGIC', link: 'Dame.html' },
+            { name: 'Briques CC', type: 'game', tech: 'PHYSICS', link: 'Briques.html' },
+            { name: 'Brique Legend', type: 'game', tech: 'UI/UX', link: 'Briquelegend.html' },
+            { name: 'Runner X', type: 'exp', tech: 'THREE.JS', link: 'Runner.html' },
+            { name: 'Tube Vision', type: 'exp', tech: 'SHADERS', link: 'Tube.html' },
+            { name: 'Temple 3D', type: 'exp', tech: 'VIRTUAL', link: 'Temple3D.html' }
+        ];
+
+        function renderLab(filter = 'all') {
+            const grid = document.getElementById('projectGrid');
+            grid.innerHTML = labProjects.map(p => {
+                const isHidden = (filter !== 'all' && p.type !== filter) ? 'hidden-unit' : '';
+                return `
+                    <div class="lab-card ${isHidden} group">
+                        <div>
+                            <div class="flex justify-between items-start">
+                                 <h4 class="text-lg font-black uppercase italic tracking-tighter">${p.name}</h4>
+                                 <span class="text-[var(--neon-cyan)] opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                            </div>
+                            <span class="unit-tag mt-3">${p.tech}</span>
+                        </div>
+                        <a href="${p.link}" class="mt-8 block text-center border border-white/10 py-3 text-[9px] font-bold tracking-[0.3em] uppercase hover:bg-white hover:text-black transition-all no-underline">
+                            Launch_Unit
+                        </a>
+                    </div>
+                `;
+            }).join('');
+        }
+        renderLab();
+
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderLab(btn.dataset.filter);
+            };
+        });
+
+        // 3. Cycle Couleurs Auto (4 Couleurs)
+        const themes = [
+            { hex: '#ff00ea', glow: 'rgba(255,0,234,0.4)' },
+            { hex: '#00f2ff', glow: 'rgba(0,242,255,0.4)' },
+            { hex: '#ffcc00', glow: 'rgba(255,204,0,0.4)' },
+            { hex: '#ffffff', glow: 'rgba(255,255,255,0.4)' }
+        ];
+        let tIdx = 0;
+        function updateCycle() {
+            const t = themes[tIdx];
+            const face = document.getElementById('phoneFace');
+            if(face) {
+                face.style.borderColor = t.hex;
+                face.style.boxShadow = `0 0 50px ${t.glow}, inset 0 0 20px ${t.glow}`;
+                document.getElementById('clock').style.color = (t.hex === '#ffffff') ? '#fff' : t.hex;
+                document.querySelectorAll('.ui-app').forEach(a => a.style.borderColor = t.hex);
+            }
+            const d = new Date();
+            document.getElementById('clock').innerText = d.getHours().toString().padStart(2,'0')+":"+d.getMinutes().toString().padStart(2,'0');
+            tIdx = (tIdx + 1) % themes.length;
+        }
+        setInterval(updateCycle, 3000); updateCycle();
+
+        // 4. Radar Skills (CTO & Designer)
+        new Chart(document.getElementById('skillRadar'), {
+            type: 'radar',
+            data: {
+                labels: ['DESIGN UI', 'CTO / ARCHI', 'WEBGL 3D', 'UX STRATEGY', 'DASHBOARDS', 'SYSTEM CORE'],
+                datasets: [{ data: [95, 98, 88, 92, 96, 95], borderColor: '#ff00ea', backgroundColor: 'rgba(255, 0, 234, 0.1)', borderWidth: 2 }]
+            },
+            options: { 
+                plugins: { legend: { display: false } }, 
+                scales: { r: { angleLines: { color: 'rgba(255,255,255,0.1)' }, grid: { color: 'rgba(255,255,255,0.1)' }, pointLabels: { color: '#888', font: { size: 9, family: 'Syncopate' } }, ticks: { display: false } } } 
+            }
+        });
+
+        // 5. Navigation & Reveal
+        window.onscroll = () => {
+            let curr = "";
+            document.querySelectorAll('section').forEach(s => {
+                if (pageYOffset >= s.offsetTop - 300) curr = s.getAttribute('id');
+            });
+            document.querySelectorAll('.nav-item').forEach(n => {
+                n.classList.remove('active');
+                if(n.getAttribute('href') && n.getAttribute('href').includes(curr)) n.classList.add('active');
+            });
+        };
+
+        const obs = new IntersectionObserver(es => es.forEach(e => e.isIntersecting && e.target.classList.add('active')), { threshold: 0.1 });
+        document.querySelectorAll('.reveal').forEach(r => obs.observe(r));
+
+        let rotY = 0;
+        function rotatePhone() { rotY += 0.3; document.getElementById('phone').style.transform = `rotateY(${rotY}deg)`; requestAnimationFrame(rotatePhone); }
+        rotatePhone();
+    </script>
 </body>
 </html>

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Brick Breaker - Pro Cannon</title>
+    <style>
+        :root { --primary: #ff4757; --win: #2ecc71; --bg: #0a0a0a; --target: #3498db; --diamond: #9b59b6; --cannon: #444; }
+        * { box-sizing: border-box; touch-action: none; user-select: none; }
+        body { background: var(--bg); color: white; margin: 0; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        #game-container { position: relative; width: 100%; max-width: 450px; height: 100%; max-height: 800px; background: #000; border: 2px solid #333; overflow: hidden; }
+        canvas { width: 100%; height: 100%; display: block; }
+        .header { position: absolute; top: 20px; width: 100%; display: flex; justify-content: space-around; pointer-events: none; z-index: 5; }
+        .card { background: rgba(0,0,0,0.85); padding: 10px; border-radius: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.1); min-width: 90px; }
+        .label { font-size: 9px; color: #888; text-transform: uppercase; }
+        .value { font-size: 18px; font-weight: bold; display: block; color: var(--primary); }
+        .status-indicator { position: absolute; bottom: 100px; width: 100%; text-align: center; pointer-events: none; }
+        #status-text { font-weight: bold; font-size: 12px; text-transform: uppercase; color: #555; letter-spacing: 2px; }
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.95); z-index: 10; }
+        .overlay.active { display: flex; }
+        .btn { background: var(--win); color: black; border: none; padding: 18px 50px; font-size: 18px; font-weight: bold; border-radius: 40px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div class="header">
+            <div class="card"><span class="label">Niveau</span><span id="lvl-val" class="value">1</span></div>
+            <div class="card"><span class="label">Record</span><span id="best-val" class="value">0</span></div>
+            <div class="card"><span class="label">Bombes</span><span id="target-val" class="value">3 / 3</span></div>
+        </div>
+        <div class="status-indicator">
+            <div id="status-text">PRÊT AU TIR</div>
+        </div>
+        <div id="win-screen" class="overlay">
+            <h1 style="color: var(--win); margin: 0;">ZONE SÉCURISÉE</h1>
+            <button class="btn" onclick="nextLevel()">NIVEAU SUIVANT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const winScreen = document.getElementById("win-screen");
+
+        let width, height, scale;
+        let currentLevel = 1;
+        let highScore = localStorage.getItem('brickBreakerBest') || 1;
+
+        let bricks = [];
+        let balls = [];
+        let colBlasts = [];
+        let burstsAvailable = 0;
+        let isAiming = false;
+        let levelTransition = false;
+        let mousePos = { x: 0, y: 0 };
+        let shake = 0;
+        let cannonRecoil = 0;
+
+        function resize() {
+            width = canvas.offsetWidth; height = canvas.offsetHeight;
+            canvas.width = width; canvas.height = height;
+            scale = width / 400;
+            loadLevel(currentLevel);
+        }
+
+        function loadLevel(lvl) {
+            bricks = []; balls = []; colBlasts = [];
+            burstsAvailable = 0; levelTransition = false;
+            winScreen.classList.remove("active");
+            const cols = 7, rows = 11, bW = (width - 40) / cols, bH = 22 * scale;
+            let positions = [];
+            for(let r=0; r<rows; r++) for(let c=0; c<cols; c++) positions.push({r, c});
+            for (let i = positions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [positions[i], positions[j]] = [positions[j], positions[i]];
+            }
+
+            for(let i=0; i<3; i++) {
+                const p = positions.pop();
+                bricks.push({x: p.c*bW+20, y: p.r*bH+120*scale, w: bW-4, h: bH, hp: 1000+(lvl*500), type: 'bomb', canEx: i===0, vx: 0});
+            }
+            for(let i=0; i<1+Math.floor(lvl/3); i++) {
+                const p = positions.pop();
+                bricks.push({x: p.c*bW+20, y: p.r*bH+120*scale, w: bW-4, h: bH, hp: 1, type: 'diamond', vx: 0});
+            }
+            const density = Math.min(0.4 + (lvl * 0.05), 0.8);
+            const count = Math.floor(positions.length * density);
+            for(let i=0; i<count; i++) {
+                const p = positions.pop();
+                const r = Math.random();
+                let type = r > 0.8 ? 'target' : (r > 0.5 ? 'block' : 'light10');
+                bricks.push({
+                    x: p.c*bW+20, y: p.r*bH+120*scale, w: bW-4, h: bH, 
+                    hp: type==='target' ? 100*lvl : (type==='block' ? 400+(lvl*200) : 10*lvl),
+                    type: type, vx: (type==='target' && lvl>1) ? (Math.random()>0.5?1:-1)*scale*0.5 : 0
+                });
+            }
+            updateUI();
+        }
+
+        function updateMouse(e) {
+            const r = canvas.getBoundingClientRect();
+            mousePos = { x: (e.touches?.[0].clientX || e.clientX) - r.left, y: (e.touches?.[0].clientY || e.clientY) - r.top };
+        }
+
+        canvas.addEventListener("pointerdown", (e) => {
+            if (levelTransition) return;
+            updateMouse(e);
+            if (balls.length === 0) isAiming = true;
+            else if (burstsAvailable > 0) fireBurst();
+        });
+        canvas.addEventListener("pointermove", (e) => { if (isAiming) updateMouse(e); });
+        canvas.addEventListener("pointerup", () => { if (isAiming) { isAiming = false; fireMain(); } });
+
+        function fireMain() {
+            burstsAvailable = 2; cannonRecoil = 15;
+            const base = { x: width/2, y: height-50 };
+            const angle = Math.atan2(mousePos.y - base.y, mousePos.x - base.x);
+            let count = 0;
+            const timer = setInterval(() => {
+                if(levelTransition) return clearInterval(timer);
+                balls.push({x:base.x, y:base.y, dx:Math.cos(angle)*10*scale, dy:Math.sin(angle)*10*scale, powered: false});
+                if(++count >= 100) clearInterval(timer);
+            }, 8);
+        }
+
+        function fireBurst() {
+            burstsAvailable--; cannonRecoil = 10;
+            const base = { x: width/2, y: height-50 };
+            const angle = Math.atan2(mousePos.y - base.y, mousePos.x - base.x);
+            for(let i=0; i<20; i++) {
+                const a = angle + (Math.random()-0.5)*0.4;
+                balls.push({x:base.x, y:base.y, dx:Math.cos(a)*13*scale, dy:Math.sin(a)*13*scale, powered: false});
+            }
+        }
+
+        function triggerMegaBlast(bomb) {
+            if(!bomb.canEx) return; 
+            shake = 45;
+            colBlasts.push({x:bomb.x, w:bomb.w, a:1.8});
+            bricks.forEach(b => {
+                if(b.hp > 0) {
+                    if(Math.abs(b.x - bomb.x) < 10 || Math.sqrt(Math.pow(b.x-bomb.x,2)+Math.pow(b.y-bomb.y,2)) < bomb.w*2.5) b.hp = 0;
+                }
+            });
+        }
+
+        function saveProgress() {
+            if (currentLevel > highScore) {
+                highScore = currentLevel;
+                localStorage.setItem('brickBreakerBest', highScore);
+            }
+        }
+
+        function update() {
+            if (levelTransition) return;
+            if(cannonRecoil > 0) cannonRecoil *= 0.9;
+            colBlasts.forEach((b, i) => { b.a -= 0.04; if(b.a<=0) colBlasts.splice(i,1); });
+            bricks.forEach(b => { if(b.hp > 0 && b.vx !== 0) { b.x += b.vx; if(b.x < 10 || b.x+b.w > width-10) b.vx *= -1; }});
+
+            for (let i = balls.length - 1; i >= 0; i--) {
+                let b = balls[i];
+                b.x += b.dx; b.y += b.dy;
+                if (b.x < 0 || b.x > width) b.dx *= -1;
+                if (b.y < 0) b.dy *= -1;
+                if (b.y > height) { balls.splice(i, 1); continue; }
+
+                for (let br of bricks) {
+                    if (br.hp > 0 && b.x > br.x && b.x < br.x + br.w && b.y > br.y && b.y < br.y + br.h) {
+                        if(br.type === 'diamond') b.powered = true;
+                        else { b.dy *= -1; br.hp -= b.powered ? 2 : 1; if(br.hp <= 0 && br.type === 'bomb') triggerMegaBlast(br); }
+                        break;
+                    }
+                }
+            }
+            if (bricks.filter(b => b.type === 'bomb' && b.hp > 0).length === 0 && !levelTransition) {
+                levelTransition = true;
+                saveProgress();
+                setTimeout(() => winScreen.classList.add("active"), 500);
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            const bombs = bricks.filter(b => b.type === 'bomb' && b.hp > 0).length;
+            document.getElementById("target-val").innerText = `${bombs} / 3`;
+            document.getElementById("lvl-val").innerText = currentLevel;
+            document.getElementById("best-val").innerText = highScore;
+            document.getElementById("status-text").innerText = (balls.length > 0) ? "RAFALE ACTIVE" : "CANON PRÊT";
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            if(shake > 0) { ctx.save(); ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake); shake *= 0.88; }
+
+            // --- Viseur Similaire à la Vidéo (Trajectoire prédictive) ---
+            if(isAiming) {
+                const base = { x: width/2, y: height-50 };
+                let simX = base.x;
+                let simY = base.y;
+                const angle = Math.atan2(mousePos.y - base.y, mousePos.x - base.x);
+                let vx = Math.cos(angle) * 20;
+                let vy = Math.sin(angle) * 20;
+
+                ctx.save();
+                ctx.setLineDash([4, 10]);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(simX, simY);
+
+                for (let i = 0; i < 80; i++) { // Longueur de la simulation
+                    simX += vx;
+                    simY += vy;
+                    if (simX < 5 || simX > width - 5) { vx *= -1; simX = Math.max(5, Math.min(width - 5, simX)); }
+                    if (simY < 0) break;
+                    ctx.lineTo(simX, simY);
+                    
+                    let hit = false;
+                    for (let br of bricks) {
+                        if (br.hp > 0 && simX > br.x && simX < br.x + br.w && simY > br.y && simY < br.y + br.h) {
+                            hit = true; break;
+                        }
+                    }
+                    if (hit) break;
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            bricks.forEach(b => {
+                if(b.hp <= 0) return;
+                ctx.fillStyle = b.type==='bomb' ? (b.canEx?'#ff4757':'#962121') : (b.type==='diamond'?'#9b59b6':(b.type==='target'?'#3498db':'#ff4757'));
+                ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 3); ctx.fill();
+                if(b.type === 'bomb' && b.canEx) { ctx.strokeStyle="white"; ctx.strokeRect(b.x,b.y,b.w,b.h); }
+                ctx.fillStyle = "black"; ctx.font = "bold 9px Arial"; ctx.textAlign = "center";
+                if(b.type !== 'diamond') ctx.fillText(Math.ceil(b.hp), b.x+b.w/2, b.y+b.h/2 + 4);
+            });
+
+            balls.forEach(b => { 
+                ctx.fillStyle = b.powered ? "#9b59b6" : "white";
+                ctx.beginPath(); ctx.arc(b.x, b.y, (b.powered?5:3)*scale, 0, Math.PI*2); ctx.fill(); 
+            });
+
+            const base = { x: width/2, y: height-50 };
+            ctx.save();
+            ctx.translate(base.x, base.y);
+            ctx.rotate((isAiming ? Math.atan2(mousePos.y-base.y, mousePos.x-base.x) : -Math.PI/2) + Math.PI/2);
+            ctx.fillStyle = "#222";
+            ctx.fillRect(-18, -10 + cannonRecoil, 36, 40); 
+            ctx.fillStyle = (balls.length === 0) ? "var(--win)" : "#444";
+            ctx.fillRect(-12, -35 + cannonRecoil, 24, 45);
+            if(balls.length === 0) {
+                ctx.fillStyle = "rgba(46, 204, 113, 0.5)";
+                ctx.fillRect(-2, -40 + cannonRecoil, 4, 10);
+            }
+            ctx.restore();
+
+            if(shake > 0) ctx.restore();
+            update();
+            requestAnimationFrame(draw);
+        }
+
+        function nextLevel() { currentLevel++; resize(); }
+        window.addEventListener('resize', resize);
+        resize();
+        draw();
+    </script>
+</body>
+</html>
